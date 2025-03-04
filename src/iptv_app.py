@@ -7,7 +7,6 @@ from src.controller.controller import Controller
 from src.model.profile import create_mock_profile
 from src.view.easy_mode_screen import EasyModeScreen
 from src.view.login_view import LoginScreen
-from src.view.loading_view import LoadingScreen
 from src.view.choose_channel_screen import ChooseChannelScreen
 
 
@@ -57,8 +56,6 @@ class IPTVApp:
         self.controller.create_profile(default_profile.name, default_profile.url)
         self.controller.profile_manager.export_profiles(self.controller.profile_path)
 
-
-
     def run(self):
         if self.controller.login_logic():
             self.transition_to_channel_selection_screen()
@@ -69,10 +66,14 @@ class IPTVApp:
         sys.exit(self.app.exec_())
 
 
-if __name__ == '__main__':
+def main():
     myappid = 'RoiAlfassi.IPTV-Saba.PC-Version.1.0.0'  # Arbitrary string
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("Assets/iptv-logo2.ico"))  # This sets the taskbar icon
     iptv = IPTVApp()
     iptv.run()
+
+
+if __name__ == '__main__':
+    main()
