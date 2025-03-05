@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 from pathlib import Path
@@ -31,14 +32,14 @@ class ConfigManager:
         # Set config file path
         if config_dir is None:
             # Default to user's home directory
-            self.config_dir = Path.home() / ".myapp"  # Replaces os.path.join(Path.home(), '.myapp')
+            self.config_dir = os.path.join(Path.home(), '.myapp')
         else:
             self.config_dir = config_dir
 
-        self.config_path = self.config_dir / config_filename  # Replaces os.path.join(self.config_dir, config_filename)
+        self.config_path = os.path.join(self.config_dir, config_filename)
 
         # Ensure config directory exists
-        self.config_dir.mkdir(parents=True, exist_ok=True)  # Replaces os.makedirs(self.config_dir, exist_ok=True)
+        os.makedirs(self.config_dir, exist_ok=True)
 
         # Load or create configuration
         self.config = self._load_config()
@@ -51,7 +52,7 @@ class ConfigManager:
             dict: The configuration dictionary.
         """
         try:
-            if self.config_path.exists():  # Replaces os.path.exists(self.config_path)
+            if os.path.exists(self.config_path):
                 with open(self.config_path, 'r') as f:
                     config = json.load(f)
                     # Ensure all default keys exist in case config file is old

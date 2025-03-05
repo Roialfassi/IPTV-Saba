@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Optional, Tuple
+import os
 from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal
-from pathlib import Path
 
 from src.data.data_loader import DataLoader
 from src.data.profile_manager import ProfileManager
@@ -23,9 +23,9 @@ class Controller(QObject):
     def __init__(self, profiles_file: str = "profiles.json", folder_name: str = 'IPTV-Saba'):
         super().__init__()
         ## Paths
-        self.config_dir = Path.cwd() / folder_name  # Replaces os.path.join(os.getcwd(), folder_name)
+        self.config_dir = os.path.join(os.getcwd(), folder_name)
         self.config_manager = ConfigManager(self.config_dir)
-        self.profile_path = self.config_dir / profiles_file  # Replaces os.path.join(self.config_dir, profiles_file)
+        self.profile_path = os.path.join(self.config_dir, profiles_file)  # path to profile
 
         self.profile_manager = ProfileManager(self.config_dir, profiles_file)  # login
         self.data_loader = DataLoader()  # login

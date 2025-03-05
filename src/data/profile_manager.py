@@ -1,7 +1,7 @@
+import os
 import json
 import threading
 import logging
-from pathlib import Path
 from typing import Optional, List, Tuple
 from src.model.profile import Profile
 
@@ -15,13 +15,13 @@ class ProfileManager:
         """
         self.profiles_folder = profiles_folder
         self.profiles_file_name = profiles_file_name
-        self.file_path = Path(self.profiles_folder) / self.profiles_file_name
+        self.file_path = os.path.join(self.profiles_folder, self.profiles_file_name)
         self.lock = threading.RLock()
         self.profiles_dict = {}  # fast lookup: key=name, value=Profile
         self.profiles_list = []  # maintain order
-        Path(self.profiles_folder).mkdir(parents=True, exist_ok=True)  # Replaces os.makedirs
+        os.makedirs(self.profiles_folder, exist_ok=True)
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s")
-        if self.file_path.exists():  # Replaces os.path.exists
+        if os.path.exists(self.file_path):
             self.load_profiles()
 
     def load_profiles(self) -> bool:
@@ -63,7 +63,7 @@ class ProfileManager:
                 tmp_file_path = self.file_path + ".tmp"
                 with open(tmp_file_path, "w") as f:
                     json.dump(data, f, indent=4)
-                self.file_path.replace(tmp_file_path)  # Replaces os.replace
+                os.replace(tmp_file_path, self.file_path)
                 logging.info("Profiles saved successfully.")
                 return True
             except Exception as e:
@@ -235,7 +235,7 @@ class ProfileManager:
                 tmp_export = export_file_path + ".tmp"
                 with open(tmp_export, "w") as f:
                     json.dump(data, f, indent=4)
-                Path(tmp_export).replace(export_file_path)  # Replaces os.replace
+                os.replace(tmp_export, export_file_path)
                 logging.info(f"Profiles exported successfully to '{export_file_path}'.")
                 return True
             except Exception as e:
@@ -323,7 +323,7 @@ if __name__ == "__main__":
             print("Profile updated:", manager.get_profile("User1"))
 
     # Export profiles
-    export_path = Path(profiles_dir) / "exported_profiles.json"  # Replaces os.path.join
+    export_path = os.path.join(profiles_dir, "exported_profiles.json")
     if manager.export_profiles(export_path):
         print("Profiles exported to", export_path)
 
