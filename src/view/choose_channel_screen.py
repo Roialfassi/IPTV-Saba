@@ -1,5 +1,4 @@
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -39,7 +38,7 @@ class LoaderWorker(QObject):
 
     def run(self):
         try:
-            data_path = Path(os.path.join(self.config_dir, (self.active_profile.name + "data.json")))
+            data_path = Path(self.config_dir) / f"{self.active_profile.name}data.json"
             # load from File
             print(type(self.active_profile))
             if self.active_profile.is_within_24_hours() is True and data_path.is_file():
@@ -54,7 +53,7 @@ class LoaderWorker(QObject):
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            fname = Path(exc_tb.tb_frame.f_code.co_filename).name
             print(exc_type, fname, exc_tb.tb_lineno)
             self.error.emit(f"Error loading IPTV data: {str(e)}")
             self.finished.emit()

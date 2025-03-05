@@ -1,19 +1,14 @@
 import json
+from pathlib import Path
 
 from src.model.group_model import Group
 from src.model.channel_model import Channel
-import requests
-from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Union, Pattern
 import re
 import requests
 from urllib.parse import urlparse
-import os
 import logging
-import io
 import chardet
-from collections import defaultdict
-from PyQt5.QtCore import pyqtSignal, QObject, pyqtSlot, QThread
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -109,7 +104,7 @@ class DataLoader:
                 raise self.SourceError(f"Failed to fetch M3U from URL: {e}")
 
         # Check if source is a local file
-        if os.path.isfile(source):
+        if Path(source).is_file():
             try:
                 with open(source, 'rb') as f:
                     content = f.read()
