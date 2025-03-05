@@ -24,6 +24,7 @@ class ProfileManager:
         if os.path.exists(self.file_path):
             self.load_profiles()
 
+
     def load_profiles(self) -> bool:
         """
         Load profiles from the JSON file.
