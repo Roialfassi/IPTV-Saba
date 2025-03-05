@@ -2,3 +2,7 @@
 /.idea
 /src/Tests
 *.pyc
+iptv_app.spec
+/build
+/dist
+/IPTV-Saba
