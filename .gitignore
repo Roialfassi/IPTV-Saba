@@ -2,8 +2,13 @@
 /.idea
 /src/Tests
 *.pyc
+<<<<<<< Updated upstream
 iptv_app.spec
 /build
 /dist
 /IPTV-Saba
+/src/IPTV-Saba
+=======
+/iptv_app.dist
+>>>>>>> Stashed changes
 /src/IPTV-Saba
