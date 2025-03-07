@@ -440,31 +440,21 @@ class ChooseChannelScreen(QWidget):
             self.group_list.addItem(group_name)
 
     def filter_groups(self, text: str):
-        """Filter the group list based on the search text."""
+        """
+        Filters the group list based on the search text.
+        """
         self.group_list.clear()
-        text = text.lower()
-        for group_name in sorted(self.groups_dict.keys()):
-            if text in group_name.lower():
-                self.group_list.addItem(group_name)
+        filtered_groups = [group for group in self.all_groups if text.lower() in group.lower()]
+        self.group_list.addItems(filtered_groups)
 
     def filter_channels(self, text: str):
         """
-        Filter channels based on the search text.
-        If text is provided, search across all channels using the controller;
-        otherwise, display channels from the currently selected group.
+        Filters the channel list based on the search text.
         """
         self.channel_list.clear()
-        text = text.strip()
-        if text:
-            matched_channels = self.controller.search_channels(text)
-            for channel in matched_channels:
-                self.channel_list.addItem(channel.name)
-        else:
-            current_item = self.group_list.currentItem()
-            if current_item:
-                group_name = current_item.text()
-                channel_names = self.controller.list_channels_in_group(group_name)
-                self.populate_channel_list(channel_names)
+        filtered_channels = [channel for channel in self.all_channels if text.lower() in channel.lower()]
+        self.channel_list.addItems(filtered_channels)
+
 
     def on_channel_selected(self):
         """
