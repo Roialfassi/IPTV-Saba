@@ -32,7 +32,7 @@ class IPTVApp:
         self.choose_channel_screen.logout_signal.connect(self.logout_choose_channel_screen)
         self.choose_channel_screen.show()
         # Saving profile after update
-        self.controller.active_profile.update_last_loaded()
+        # self.controller.active_profile.update_last_loaded()
         self.controller.profile_manager.update_profile(self.controller.active_profile)
         self.controller.profile_manager.export_profiles(self.controller.profile_path)
         if self.login_screen:

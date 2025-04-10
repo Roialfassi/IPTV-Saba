@@ -32,6 +32,7 @@ class LoaderWorker(QObject):
 
     def __init__(self, controller: Controller):
         super().__init__()
+        self.controller = controller
         self.loader = controller.data_loader
         self.source = controller.active_profile.url
         self.active_profile = controller.active_profile
@@ -49,7 +50,13 @@ class LoaderWorker(QObject):
                 success = self.loader.load(self.source)
                 if not success:
                     self.error.emit("Failed to load IPTV data")
-                self.loader.save_to_json(data_path)
+                    logger.info("Loading Data from file since last login was recently")
+                    self.loader.load_from_json(data_path)
+                else:
+                    self.loader.save_to_json(data_path)
+                    self.controller.active_profile.update_last_loaded()
+                    self.controller.profile_manager.update_profile(self.controller.active_profile)
+                    self.controller.profile_manager.export_profiles(self.controller.profile_path)
             self.finished.emit()
 
         except Exception as e:
@@ -702,7 +709,10 @@ class ChooseChannelScreen(QWidget):
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply == QMessageBox.Yes:
+            if self.player:
+                self.player.stop()
             self.logout_signal.emit("logging Out")
+
             # QApplication.quit()
 
 
