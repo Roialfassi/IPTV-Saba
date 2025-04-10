@@ -8,6 +8,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class Channel:
     """
@@ -23,6 +24,7 @@ class Channel:
     stream_url: str
     tvg_id: str = ""
     tvg_logo: str = ""
+    channel_type: str = ""
 
     def __str__(self) -> str:
         """
@@ -41,7 +43,9 @@ class Channel:
             "name": self.name,
             "stream_url": self.stream_url,
             "tvg_id": self.tvg_id,
-            "tvg_logo": self.tvg_logo
+            "tvg_logo": self.tvg_logo,
+            "channel_type":self.channel_type
+
         }
 
     @classmethod
@@ -60,12 +64,12 @@ class Channel:
                 name=data.get("name", ""),
                 stream_url=data.get("stream_url", ""),
                 tvg_id=data.get("tvg_id", ""),
-                tvg_logo=data.get("tvg_logo", "")
+                tvg_logo=data.get("tvg_logo", ""),
+                channel_type=data.get("channel_type", "")
             )
         except KeyError as e:
             logger.error(f"Missing key in channel data: {e}")
             raise ValueError(f"Invalid channel data: missing {e}")
-
 
     def update(self, **kwargs) -> None:
         """
