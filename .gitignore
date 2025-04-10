@@ -14,3 +14,4 @@ iptv_app.spec
 /src/IPTV-Saba
 /src/view/IPTV-Saba
 /src/build
+*.mkv
