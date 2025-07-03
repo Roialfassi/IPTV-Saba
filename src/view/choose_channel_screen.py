@@ -458,9 +458,10 @@ class ChooseChannelScreen(QWidget):
         """
         Filters the channel list based on the search text.
         """
-        self.channel_list.clear()
-        filtered_channels = [channel for channel in self.all_channels if text.lower() in channel.lower()]
-        self.channel_list.addItems(filtered_channels)
+        if self.channel_list:
+            self.channel_list.clear()
+            filtered_channels = [channel for channel in self.all_channels if text.lower() in channel.lower()]
+            self.channel_list.addItems(filtered_channels)
 
 
     def on_channel_selected(self):
