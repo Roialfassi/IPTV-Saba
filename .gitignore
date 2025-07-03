@@ -16,3 +16,4 @@ iptv_app.spec
 /src/build
 *.mkv
 /src/dist
+*.mp4
