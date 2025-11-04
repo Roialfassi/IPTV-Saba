@@ -6,7 +6,6 @@ import requests
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Union, Pattern
 import re
-import requests
 from urllib.parse import urlparse
 import os
 import logging
@@ -256,6 +255,21 @@ class DataLoader:
         """
         return self._groups.get(name)
 
+    def get_channel_by_name(self, channel_name: str) -> Optional[Channel]:
+        """
+        Find a channel by name across all groups.
+
+        Args:
+            channel_name: Channel name to find
+
+        Returns:
+            Channel object or None if not found
+        """
+        for channel in self._channels:
+            if channel.name.lower() == channel_name.lower():
+                return channel
+        return None
+
     def find_groups(self, pattern: Union[str, Pattern]) -> List[Group]:
         """
         Find groups matching a name pattern.
@@ -357,7 +371,7 @@ class DataLoader:
 
             return True
         except Exception as e:
-            self._logger.error(f"Error saving to JSON: {e}")
+            logger.error(f"Error saving to JSON: {e}")
             return False
 
     def load_from_json(self, file_path: str) -> bool:
@@ -403,7 +417,7 @@ class DataLoader:
 
             return len(self._channels) > 0
         except Exception as e:
-            self._logger.error(f"Error loading from JSON: {e}")
+            logger.error(f"Error loading from JSON: {e}")
             return False
 
 if __name__ == "__main__":

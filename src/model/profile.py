@@ -90,7 +90,7 @@ class Profile:
         """
         if not self.last_loaded:
             return True
-        last_loaded_time = datetime.fromisoformat(self.last_loaded)
+        last_loaded_time = datetime.fromtimestamp(self.last_loaded)
         return (datetime.utcnow() - last_loaded_time).total_seconds() > 86400  # 24 hours
 
     def __str__(self) -> str:
@@ -347,26 +347,28 @@ class Profile:
         return is_valid
 
     def update_favorites(self, data_loader: DataLoader):
-        for i, channel in enumerate(self.favorites):
+        updated_favorites = []
+        for channel in self.favorites:
             updated_channel = data_loader.get_channel_by_name(channel.name)
             if updated_channel:
+                updated_favorites.append(updated_channel)
                 if updated_channel != channel:
-                    self.favorites[i] = updated_channel
                     logger.info(f"channel updated '{channel.name}' in the data.")
             else:
-                self.favorites.pop(i)
                 logger.info(f"Couldnt find '{channel.name}' in the Favorites.")
+        self.favorites = updated_favorites
 
     def update_history(self, data_loader: DataLoader):
-        for i, channel in enumerate(self.history):
+        updated_history = []
+        for channel in self.history:
             updated_channel = data_loader.get_channel_by_name(channel.name)
             if updated_channel:
+                updated_history.append(updated_channel)
                 if updated_channel != channel:
-                    self.history[i] = updated_channel
                     logger.info(f"channel updated '{channel.name}' in the history.")
             else:
-                self.favorites.pop(i)
                 logger.info(f"Couldnt find '{channel.name}' in the data.")
+        self.history = updated_history
 
     def list_channels_in_favorites(self) -> List[str]:
         """
