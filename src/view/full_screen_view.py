@@ -1,4 +1,5 @@
 import sys
+import logging
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QFrame, QSlider)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
@@ -6,26 +7,48 @@ import vlc
 
 from src.model.channel_model import Channel
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 
 class FullScreenView(QWidget):
     """
     A full-screen media player that takes a URL, plays the channel, and provides limited controls.
     Keys include: back to `ChooseChannelScreen`, volume control, and play/pause.
+
+    NOTE: This view reuses the existing VLC player instance to avoid dual streams.
     """
 
     go_back_signal = pyqtSignal()  # Signal to emit when going back to ChooseChannelScreen
 
-    def __init__(self, channel: Channel):
+    def __init__(self, channel: Channel, existing_player=None, existing_instance=None):
         super().__init__()
         self.channel_name = channel.name
         self.stream_url = channel.stream_url
-        self.vlc_instance = vlc.Instance()
-        self.player = self.vlc_instance.media_player_new()
-        self.is_playing = False
+
+        # Reuse existing player if provided to avoid dual streams
+        if existing_player and existing_instance:
+            self.vlc_instance = existing_instance
+            self.player = existing_player
+            self.is_playing = True  # Already playing
+            logger.info("Reusing existing VLC player instance (avoiding dual stream)")
+        else:
+            self.vlc_instance = vlc.Instance()
+            self.player = self.vlc_instance.media_player_new()
+            self.is_playing = False
+            logger.info("Created new VLC player instance")
+
         self.is_muted = False
         self.init_ui()
         self.setMouseTracking(True)
-        self.play_channel()
+
+        # Only start playing if we created a new player
+        if not (existing_player and existing_instance):
+            self.play_channel()
+        else:
+            # Just update the UI to reflect current state
+            self.play_pause_button.setText("Pause")
+
         self.hide_controls_timer = QTimer(self, interval=2000)  # Hide controls after 2 seconds of inactivity
         self.hide_controls_timer.timeout.connect(self.hide_controls)
         self.hide_controls_timer.start(2000)
@@ -148,8 +171,9 @@ class FullScreenView(QWidget):
     def go_back(self):
         """
         Emit a signal to go back to the ChooseChannelScreen.
+        NOTE: We don't stop the player here anymore since it's shared with ChooseChannelScreen.
         """
-        self.player.stop()
+        # Don't stop the player - let ChooseChannelScreen handle it
         self.go_back_signal.emit()
 
     def keyPressEvent(self, event):
@@ -180,9 +204,9 @@ class FullScreenView(QWidget):
 
     def closeEvent(self, event):
         """
-        Ensure the VLC player is stopped when the window is closed.
+        Handle window close event.
+        NOTE: We don't stop the player here since it's shared with ChooseChannelScreen.
         """
-        self.player.stop()
         event.accept()
 
     def mouseMoveEvent(self, event):
