@@ -8,32 +8,6 @@ import vlc
 
 from src.model.profile import create_mock_profile
 
-
-class RoundButton(QPushButton):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(60, 60)
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(229, 9, 20, 0.8);
-                border-radius: 30px;
-                color: white;
-                font-size: 24px;
-            }
-            QPushButton:hover {
-                background-color: rgba(229, 9, 20, 1);
-            }
-        """)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor(229, 9, 20, 204))
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(self.rect())
-        super().paintEvent(event)
-
-
 class EasyModeScreen(QWidget):
     exit_easy_mode_signal = pyqtSignal()  # Signal to emit when exiting Easy Mode
 
