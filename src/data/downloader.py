@@ -56,8 +56,9 @@ def download_mp4(url, output_filename=None):
         sys.exit(1)
 
 if __name__ == "__main__":
-    download_mp4("http://worldiptv.me:8080/movie/fwNqqZfSrZWf/jAQCcnHh5rWr/161851.mkv", "uncharted.mkv")
-    download_mp4("http://worldiptv.me:8080/movie/fwNqqZfSrZWf/jAQCcnHh5rWr/171541.mkv", "inception.mkv")
-    download_mp4("http://worldiptv.me:8080/movie/fwNqqZfSrZWf/jAQCcnHh5rWr/184016.mp4", "anora.mp4")
+    download_mp4("http://worldiptv.me:8080/movie/fwNqqZfSrZWf/jAQCcnHh5rWr/121103.mkv", "Blonde-2022.mkv")
+    download_mp4("http://worldiptv.me:8080/movie/fwNqqZfSrZWf/jAQCcnHh5rWr/164266.mp", "Hacker-2016.mp4")
 
+#http://worldiptv.me:8080/movie/fwNqqZfSrZWf/jAQCcnHh5rWr/164436.mp4 past lives
+#http://worldiptv.me:8080/movie/fwNqqZfSrZWf/jAQCcnHh5rWr/165617.mkv CODA
 
