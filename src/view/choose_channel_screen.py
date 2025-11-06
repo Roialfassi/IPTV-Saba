@@ -826,6 +826,39 @@ class ChooseChannelScreen(QWidget):
             f"Recording saved successfully!\n\nSaved to:\n{filepath}"
         )
 
+    def attach_player_to_window(self):
+        """
+        Attach the VLC player to the video frame window using platform-specific methods.
+        """
+        if not hasattr(self, 'player') or not self.player:
+            return
+
+        if not hasattr(self, 'video_frame'):
+            return
+
+        try:
+            if sys.platform.startswith('linux'):
+                self.player.set_xwindow(int(self.video_frame.winId()))
+                logger.info(f"Attached player to Linux window: {self.video_frame.winId()}")
+            elif sys.platform == "win32":
+                self.player.set_hwnd(int(self.video_frame.winId()))
+                logger.info(f"Attached player to Windows window: {self.video_frame.winId()}")
+            elif sys.platform == "darwin":
+                self.player.set_nsobject(int(self.video_frame.winId()))
+                logger.info(f"Attached player to Mac window: {self.video_frame.winId()}")
+        except Exception as e:
+            logger.error(f"Error attaching player to window: {e}")
+
+    def showEvent(self, event):
+        """
+        Called when the widget is shown. Reattach the player to ensure video continues.
+        """
+        super().showEvent(event)
+        # Reattach player when returning from fullscreen
+        if hasattr(self, 'player') and self.player:
+            self.attach_player_to_window()
+            logger.info("ChooseChannelScreen shown - player reattached")
+
     def closeEvent(self, event):
         """
         Ensures that the VLC player is properly released when the widget is closed.
@@ -845,9 +878,8 @@ class ChooseChannelScreen(QWidget):
         """
         Open fullscreen view with the same player instance to avoid dual streams.
         """
-        # Detach player from current widget before switching
-        if hasattr(self, 'player') and self.player:
-            self.player.set_hwnd(0)  # Detach from video frame
+        # DON'T detach player - just pass it to the fullscreen view
+        # The fullscreen view will attach it to its own window
 
         # Pass existing player and instance to avoid creating a second stream
         self.fullscreen_view = FullScreenView(
@@ -856,25 +888,28 @@ class ChooseChannelScreen(QWidget):
             existing_instance=self.instance
         )
         self.fullscreen_view.go_back_signal.connect(self.on_fullscreen_view_closed)
+
+        # Show fullscreen - this will trigger showEvent which attaches the player
         self.fullscreen_view.showFullScreen()
+
+        # Hide this window
         self.hide()
+
+        logger.info("Opened fullscreen view with shared player instance")
 
     def on_fullscreen_view_closed(self):
         """
         Handle returning from fullscreen view.
-        Reattach the player to the video frame.
+        Show this window again - the showEvent will handle player reattachment.
         """
-        # Reattach player to the video frame
-        if hasattr(self, 'player') and self.player:
-            if sys.platform.startswith('linux'):
-                self.player.set_xwindow(int(self.video_frame.winId()))
-            elif sys.platform == "win32":
-                self.player.set_hwnd(int(self.video_frame.winId()))
-            elif sys.platform == "darwin":
-                self.player.set_nsobject(int(self.video_frame.winId()))
+        # Close and cleanup fullscreen view
+        if self.fullscreen_view:
+            self.fullscreen_view.close()
+            self.fullscreen_view = None
 
+        # Show this window - showEvent will reattach the player
         self.show()
-        self.fullscreen_view = None
+        logger.info("Returned from fullscreen view")
 
     @pyqtSlot()
     def logout(self):
