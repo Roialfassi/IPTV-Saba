@@ -32,7 +32,9 @@ version = 1.0.0
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3==3.11.6,kivy==2.3.0,pillow,requests,aiohttp,chardet,pyyaml,python-dateutil,urllib3,certifi,idna,multidict,yarl,attrs,charset-normalizer,android,pyjnius,plyer
+# Note: Removed version pinning to avoid pyjnius/Python 3.11 compatibility issues
+# Buildozer will automatically use compatible versions
+requirements = python3,kivy,pillow,requests,aiohttp,chardet,pyyaml,python-dateutil,android,pyjnius,plyer
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
@@ -281,7 +283,8 @@ android.allow_backup = True
 #p4a.fork = kivy
 
 # (str) python-for-android branch to use, defaults to master
-#p4a.branch = master
+# Using develop branch for latest pyjnius fixes
+p4a.branch = develop
 
 # (str) python-for-android git clone directory (if empty, it will be automatically cloned from github)
 #p4a.source_dir =
