@@ -28,6 +28,9 @@ This is a **complete Android conversion** of the IPTV-Saba desktop application. 
 - 🎬 **Fullscreen Playback** - Immersive fullscreen video player with touch controls
 - 🌐 **Auto-Login** - Remember your profile and login automatically
 - 💾 **Offline Caching** - 24-hour cache for faster loading
+- ⬇️ **Download Media** - Download media files directly to your device
+- ⏺️ **Record Livestreams** - Record live channels for later viewing
+- 📂 **Downloads Manager** - View and manage all downloaded content
 
 ---
 
@@ -106,12 +109,14 @@ buildozer android debug
 
 ### Runtime Requirements
 - **Android Version**: 5.0 (Lollipop) or higher (API 21+)
-- **Storage**: ~50MB for app + data storage
-- **Internet**: Required for streaming
+- **Storage**: ~100MB for app + adequate space for downloads/recordings
+- **Internet**: Required for streaming and downloads
 - **Permissions**:
   - Internet access
-  - Storage (read/write)
+  - Storage (read/write) for downloads/recordings
   - Wake lock (prevent sleep during playback)
+  - Foreground service (for background downloads)
+  - Network state (check connection)
 
 ### Build Requirements
 - Linux or macOS
@@ -159,6 +164,31 @@ After profile creation:
 2. Use **large "Previous"/"Next" buttons** to change channels
 3. **Tap screen** to show/hide controls
 4. Only shows **favorite channels** for simplicity
+
+### 6. Downloading Media Files
+
+1. Select a channel that has a **media file** (e.g., .mp4, .mkv)
+2. Tap **"⬇ Download"**
+3. Download starts using Android DownloadManager
+4. Check **notification panel** for download progress
+5. Tap **"📁 Downloads"** to view completed downloads
+
+**Note**: Only downloadable media files can be downloaded. Livestreams must be recorded instead.
+
+### 7. Recording Livestreams
+
+1. Select a **livestream channel**
+2. Tap **"⏺ Record"** to start recording
+3. Button changes to **"⏹ Stop"** while recording
+4. Tap **"⏹ Stop"** to finish recording
+5. Recording is saved to `/sdcard/IPTV-Saba/Downloads/`
+6. View recordings in **"📁 Downloads"**
+
+**Tips**:
+- Recordings can be large - ensure sufficient storage space
+- Recording continues even if you navigate away from the screen
+- Recordings are saved as .mp4 files by default
+- Use a file manager or video player app to watch recordings
 
 ---
 
@@ -238,13 +268,14 @@ Edit color values in screen files:
    - Most HLS and RTSP streams work
    - Some exotic formats may not play
 
-2. **Background Playback**: Not implemented
-   - Playback stops when app is minimized
-   - Future enhancement planned
+2. **Background Playback**: Partially implemented
+   - Video playback stops when app is minimized
+   - Downloads and recordings continue in background
 
-3. **Offline Viewing**: Not available
-   - Requires internet connection
-   - Download feature planned for future
+3. **Download Progress**:
+   - Uses Android DownloadManager for visible progress
+   - Progress shown in notification panel
+   - Large files may take time
 
 4. **Chromecast**: Not supported
    - Future enhancement
@@ -309,7 +340,9 @@ Edit color values in screen files:
 | **Platform** | Windows/Linux/macOS | Android only |
 | **Storage** | `~/.IPTV-Saba/` | `/sdcard/IPTV-Saba/` |
 | **Controls** | Mouse/Keyboard | Touch |
-| **Download/Record** | ✅ Available | ❌ Not implemented |
+| **Download** | ✅ Available | ✅ Available (Android DownloadManager) |
+| **Recording** | ✅ Available (VLC) | ✅ Available (requests streaming) |
+| **Download Progress** | Progress bar | Android notification |
 
 ---
 

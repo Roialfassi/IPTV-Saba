@@ -23,6 +23,7 @@ from kivy.app import App
 from kivy.clock import Clock, mainthread
 
 from src.data.data_loader import DataLoader
+from src.android.download_record_manager import DownloadRecordManager
 
 
 class LoadingPopup(Popup):
@@ -64,6 +65,16 @@ class ChannelScreen(Screen):
         self.filtered_channels = []
         self.selected_channel = None
         self.loading_popup = None
+
+        # Initialize download/record manager
+        self.download_manager = DownloadRecordManager()
+        self.active_recording_id = None
+
+        # Bind to download/record events
+        self.download_manager.bind(on_download_complete=self.on_download_complete)
+        self.download_manager.bind(on_download_error=self.on_download_error)
+        self.download_manager.bind(on_recording_started=self.on_recording_started)
+        self.download_manager.bind(on_recording_stopped=self.on_recording_stopped)
 
         self.build_ui()
 
@@ -170,7 +181,7 @@ class ChannelScreen(Screen):
         main_layout.add_widget(filter_layout)
 
         # Channel list
-        scroll = ScrollView(size_hint_y=0.7)
+        scroll = ScrollView(size_hint_y=0.62)
         self.channel_list = GridLayout(
             cols=1,
             spacing=dp(5),
@@ -181,28 +192,59 @@ class ChannelScreen(Screen):
         scroll.add_widget(self.channel_list)
         main_layout.add_widget(scroll)
 
-        # Bottom buttons
-        bottom_layout = BoxLayout(size_hint_y=0.1, spacing=dp(10))
+        # Bottom buttons - Row 1
+        bottom_layout_1 = BoxLayout(size_hint_y=0.1, spacing=dp(5))
 
         play_btn = Button(
             text="Play",
             background_color=(0.898, 0.035, 0.078, 1),
-            font_size=dp(16),
+            font_size=dp(14),
             bold=True
         )
         play_btn.bind(on_press=self.play_channel)
-        bottom_layout.add_widget(play_btn)
+        bottom_layout_1.add_widget(play_btn)
 
         fullscreen_btn = Button(
             text="Fullscreen",
             background_color=(0.098, 0.467, 0.949, 1),
-            font_size=dp(16),
+            font_size=dp(14),
             bold=True
         )
         fullscreen_btn.bind(on_press=self.play_fullscreen)
-        bottom_layout.add_widget(fullscreen_btn)
+        bottom_layout_1.add_widget(fullscreen_btn)
 
-        main_layout.add_widget(bottom_layout)
+        main_layout.add_widget(bottom_layout_1)
+
+        # Bottom buttons - Row 2 (Download/Record)
+        bottom_layout_2 = BoxLayout(size_hint_y=0.08, spacing=dp(5))
+
+        download_btn = Button(
+            text="⬇ Download",
+            background_color=(0.2, 0.6, 0.2, 1),
+            font_size=dp(14),
+            bold=True
+        )
+        download_btn.bind(on_press=self.download_channel)
+        bottom_layout_2.add_widget(download_btn)
+
+        self.record_btn = Button(
+            text="⏺ Record",
+            background_color=(0.8, 0.4, 0.0, 1),
+            font_size=dp(14),
+            bold=True
+        )
+        self.record_btn.bind(on_press=self.toggle_recording)
+        bottom_layout_2.add_widget(self.record_btn)
+
+        downloads_list_btn = Button(
+            text="📁 Downloads",
+            background_color=(0.4, 0.4, 0.4, 1),
+            font_size=dp(14)
+        )
+        downloads_list_btn.bind(on_press=self.show_downloads)
+        bottom_layout_2.add_widget(downloads_list_btn)
+
+        main_layout.add_widget(bottom_layout_2)
 
         self.add_widget(main_layout)
 
@@ -459,8 +501,178 @@ class ChannelScreen(Screen):
         """Switch to easy mode screen"""
         App.get_running_app().switch_screen('easy_mode')
 
+    def download_channel(self, instance):
+        """Download selected channel"""
+        if not self.selected_channel:
+            error_popup = Popup(
+                title='Error',
+                content=Label(text='Please select a channel first'),
+                size_hint=(0.7, 0.3)
+            )
+            error_popup.open()
+            return
+
+        # Check if it's a downloadable media file
+        if not self.download_manager.is_media_file(self.selected_channel.stream_url):
+            error_popup = Popup(
+                title='Info',
+                content=Label(text='This is a livestream. Use "Record" to capture it.'),
+                size_hint=(0.8, 0.3)
+            )
+            error_popup.open()
+            return
+
+        # Start download
+        try:
+            download_id = self.download_manager.download_media(
+                self.selected_channel.stream_url,
+                self.selected_channel.name
+            )
+
+            success_popup = Popup(
+                title='Download Started',
+                content=Label(text=f'Downloading {self.selected_channel.name}\nCheck notifications for progress'),
+                size_hint=(0.8, 0.3)
+            )
+            success_popup.open()
+
+        except Exception as e:
+            error_popup = Popup(
+                title='Error',
+                content=Label(text=f'Failed to start download: {str(e)}'),
+                size_hint=(0.8, 0.3)
+            )
+            error_popup.open()
+
+    def toggle_recording(self, instance):
+        """Start or stop recording"""
+        if not self.selected_channel:
+            error_popup = Popup(
+                title='Error',
+                content=Label(text='Please select a channel first'),
+                size_hint=(0.7, 0.3)
+            )
+            error_popup.open()
+            return
+
+        # If currently recording, stop it
+        if self.active_recording_id:
+            self.download_manager.stop_recording(self.active_recording_id)
+            self.active_recording_id = None
+            self.record_btn.text = "⏺ Record"
+            self.record_btn.background_color = (0.8, 0.4, 0.0, 1)
+            return
+
+        # Start recording
+        try:
+            self.active_recording_id = self.download_manager.start_recording(
+                self.selected_channel.stream_url,
+                self.selected_channel.name
+            )
+
+            self.record_btn.text = "⏹ Stop"
+            self.record_btn.background_color = (0.8, 0.2, 0.2, 1)
+
+        except Exception as e:
+            error_popup = Popup(
+                title='Error',
+                content=Label(text=f'Failed to start recording: {str(e)}'),
+                size_hint=(0.8, 0.3)
+            )
+            error_popup.open()
+
+    def show_downloads(self, instance):
+        """Show list of downloaded files"""
+        files = self.download_manager.list_downloaded_files()
+
+        # Create popup with file list
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+
+        if not files:
+            content.add_widget(Label(text='No downloads yet', size_hint_y=0.9))
+        else:
+            scroll = ScrollView(size_hint_y=0.9)
+            file_list = GridLayout(cols=1, spacing=dp(5), size_hint_y=None)
+            file_list.bind(minimum_height=file_list.setter('height'))
+
+            for file_info in sorted(files, key=lambda x: x['modified'], reverse=True):
+                file_btn = Button(
+                    text=f"{file_info['filename']}\n{file_info['size'] // 1024 // 1024} MB",
+                    size_hint_y=None,
+                    height=dp(60),
+                    background_color=(0.2, 0.2, 0.2, 1)
+                )
+                # Could add functionality to open file here
+                file_list.add_widget(file_btn)
+
+            scroll.add_widget(file_list)
+            content.add_widget(scroll)
+
+        # Close button
+        close_btn = Button(
+            text='Close',
+            size_hint_y=0.1,
+            background_color=(0.3, 0.3, 0.3, 1)
+        )
+
+        downloads_popup = Popup(
+            title='Downloaded Files',
+            content=content,
+            size_hint=(0.9, 0.8)
+        )
+
+        close_btn.bind(on_press=downloads_popup.dismiss)
+        content.add_widget(close_btn)
+
+        downloads_popup.open()
+
+    def on_download_complete(self, instance, download_id, file_path):
+        """Handle download completion"""
+        success_popup = Popup(
+            title='Download Complete',
+            content=Label(text=f'Download completed!\nSaved to: {file_path}'),
+            size_hint=(0.8, 0.3)
+        )
+        Clock.schedule_once(lambda dt: success_popup.open(), 0)
+
+    def on_download_error(self, instance, download_id, error_message):
+        """Handle download error"""
+        error_popup = Popup(
+            title='Download Failed',
+            content=Label(text=f'Download failed: {error_message}'),
+            size_hint=(0.8, 0.3)
+        )
+        Clock.schedule_once(lambda dt: error_popup.open(), 0)
+
+    def on_recording_started(self, instance, recording_id):
+        """Handle recording start"""
+        success_popup = Popup(
+            title='Recording Started',
+            content=Label(text=f'Recording {self.selected_channel.name}\nTap "Stop" to finish'),
+            size_hint=(0.8, 0.3)
+        )
+        Clock.schedule_once(lambda dt: success_popup.open(), 0)
+
+    def on_recording_stopped(self, instance, recording_id, file_path):
+        """Handle recording stop"""
+        self.active_recording_id = None
+        self.record_btn.text = "⏺ Record"
+        self.record_btn.background_color = (0.8, 0.4, 0.0, 1)
+
+        success_popup = Popup(
+            title='Recording Stopped',
+            content=Label(text=f'Recording saved to:\n{file_path}'),
+            size_hint=(0.8, 0.3)
+        )
+        Clock.schedule_once(lambda dt: success_popup.open(), 0)
+
     def logout(self, instance):
         """Logout and return to login screen"""
+        # Stop any active recording
+        if self.active_recording_id:
+            self.download_manager.stop_recording(self.active_recording_id)
+            self.active_recording_id = None
+
         # Clear auto-login
         self.controller.config_manager.set('auto_login_enabled', False)
         self.controller.config_manager.save()

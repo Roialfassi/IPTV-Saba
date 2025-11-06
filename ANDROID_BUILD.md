@@ -14,10 +14,10 @@ This branch contains a complete Android conversion of the IPTV-Saba desktop appl
 ### System Requirements
 
 - **Operating System**: Linux (Ubuntu/Debian recommended) or macOS
-- **Python**: 3.9 or higher
-- **Java JDK**: Version 11 or higher
-- **Android SDK**: Will be downloaded automatically by Buildozer
-- **Android NDK**: Will be downloaded automatically by Buildozer
+- **Python**: 3.11 or higher
+- **Java JDK**: Version 11 or 17 (recommended)
+- **Android SDK**: API 33 (will be downloaded automatically by Buildozer)
+- **Android NDK**: 25b (will be downloaded automatically by Buildozer)
 
 ### Required System Packages (Ubuntu/Debian)
 

@@ -32,7 +32,7 @@ version = 1.0.0
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3==3.9.0,kivy==2.2.1,pillow,requests,aiohttp,chardet,pyyaml,python-dateutil,urllib3,certifi,idna,multidict,yarl,attrs,charset-normalizer
+requirements = python3==3.11.6,kivy==2.3.0,pillow,requests,aiohttp,chardet,pyyaml,python-dateutil,urllib3,certifi,idna,multidict,yarl,attrs,charset-normalizer,android,pyjnius,plyer
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
@@ -48,7 +48,7 @@ requirements = python3==3.9.0,kivy==2.2.1,pillow,requests,aiohttp,chardet,pyyaml
 #icon.filename = %(source.dir)s/android/icon.png
 
 # (str) Supported orientation (landscape, sensorLandscape, portrait or all)
-orientation = landscape
+orientation = all
 
 # (list) List of service to declare
 #services = NAME:ENTRYPOINT_TO_PY,NAME2:ENTRYPOINT2_TO_PY
@@ -91,22 +91,22 @@ android.presplash_color = #000000
 #icon.adaptive_background.filename = %(source.dir)s/android/icon_bg.png
 
 # (list) Permissions
-android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,WAKE_LOCK,ACCESS_NETWORK_STATE
+android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,WAKE_LOCK,ACCESS_NETWORK_STATE,FOREGROUND_SERVICE,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 
 # (list) features (adds uses-feature -tags to manifest)
 #android.features = android.hardware.usb.host
 
 # (int) Target Android API, should be as high as possible.
-android.api = 31
+android.api = 33
 
 # (int) Minimum API your APK will support.
 android.minapi = 21
 
 # (int) Android SDK version to use
-android.sdk = 31
+android.sdk = 33
 
 # (str) Android NDK version to use
-android.ndk = 23b
+android.ndk = 25b
 
 # (bool) Use --private data storage (True) or --dir public storage (False)
 android.private_storage = True
