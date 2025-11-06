@@ -889,39 +889,47 @@ class ChooseChannelScreen(QWidget):
 
     def open_fullscreen_view(self, channel: Channel):
         """
-        Open fullscreen view with the same player instance to avoid dual streams.
+        Open fullscreen view. Stop current player and let fullscreen create its own.
+        This matches the working pattern from the test code.
         """
-        # DON'T detach player - just pass it to the fullscreen view
-        # The fullscreen view will attach it to its own window
+        # Stop the player in this window
+        if hasattr(self, 'player') and self.player:
+            logger.info("Stopping player before fullscreen")
+            self.player.stop()
 
-        # Pass existing player and instance to avoid creating a second stream
-        self.fullscreen_view = FullScreenView(
-            channel,
-            existing_player=self.player,
-            existing_instance=self.instance
-        )
+        # Create fullscreen view WITHOUT passing player (let it create its own)
+        # This matches the test code pattern that works
+        self.fullscreen_view = FullScreenView(channel)
         self.fullscreen_view.go_back_signal.connect(self.on_fullscreen_view_closed)
 
-        # Show fullscreen - this will trigger showEvent which attaches the player
+        # Show fullscreen
         self.fullscreen_view.showFullScreen()
 
         # Hide this window
         self.hide()
 
-        logger.info("Opened fullscreen view with shared player instance")
+        logger.info("Opened fullscreen view with new player instance")
 
     def on_fullscreen_view_closed(self):
         """
         Handle returning from fullscreen view.
-        Show this window again - the showEvent will handle player reattachment.
+        Restart playback of the channel that was playing.
         """
         # Close and cleanup fullscreen view
         if self.fullscreen_view:
             self.fullscreen_view.close()
             self.fullscreen_view = None
 
-        # Show this window - showEvent will reattach the player
+        # Show this window
         self.show()
+
+        # Restart the channel that was playing
+        if self.active_channel:
+            logger.info(f"Restarting playback of {self.active_channel.name}")
+            self.play_stream(self.active_channel.stream_url)
+        else:
+            logger.info("No active channel to restart")
+
         logger.info("Returned from fullscreen view")
 
     @pyqtSlot()
