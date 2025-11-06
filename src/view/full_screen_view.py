@@ -164,6 +164,24 @@ class FullScreenView(QWidget):
                 logger.info(f"✓ Attached player to macOS NSObject: {win_id}")
             else:
                 logger.error(f"Unsupported platform: {sys.platform}")
+
+            # CRITICAL: Force player to refresh video output after attaching to new window
+            # The player is already playing but needs to re-render to the new window
+            if self.player.is_playing():
+                logger.info("Player is playing - forcing video refresh")
+                # Get current position to restore after
+                current_pos = self.player.get_position()
+                # Pause and immediately play to force re-render
+                self.player.pause()
+                QTimer.singleShot(50, lambda: self.player.play())
+                # Restore position if we were not at the beginning
+                if current_pos > 0.0:
+                    QTimer.singleShot(100, lambda: self.player.set_position(current_pos))
+                logger.info("Video refresh triggered")
+            else:
+                logger.warning("Player is not playing - starting playback")
+                self.player.play()
+
         except Exception as e:
             logger.error(f"Error attaching player to window: {e}")
             import traceback

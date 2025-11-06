@@ -846,6 +846,19 @@ class ChooseChannelScreen(QWidget):
             elif sys.platform == "darwin":
                 self.player.set_nsobject(int(self.video_frame.winId()))
                 logger.info(f"Attached player to Mac window: {self.video_frame.winId()}")
+
+            # Force player to refresh video output after reattaching
+            if self.player.is_playing():
+                logger.info("Player is playing - forcing video refresh on main window")
+                current_pos = self.player.get_position()
+                self.player.pause()
+                QTimer.singleShot(50, lambda: self.player.play())
+                if current_pos > 0.0:
+                    QTimer.singleShot(100, lambda: self.player.set_position(current_pos))
+            else:
+                logger.warning("Player not playing - starting playback")
+                self.player.play()
+
         except Exception as e:
             logger.error(f"Error attaching player to window: {e}")
 
