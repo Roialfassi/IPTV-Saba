@@ -1,0 +1,12 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <!-- IPTV Saba Icon Placeholder -->
+  <rect width="512" height="512" fill="#E50914"/>
+  <text x="256" y="200" font-family="Arial, sans-serif" font-size="120" font-weight="bold" fill="white" text-anchor="middle">
+    IPTV
+  </text>
+  <text x="256" y="320" font-family="Arial, sans-serif" font-size="100" fill="white" text-anchor="middle">
+    Saba
+  </text>
+  <circle cx="256" cy="400" r="30" fill="white"/>
+  <polygon points="246,385 246,415 276,400" fill="#E50914"/>
+</svg>

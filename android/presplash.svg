@@ -1,0 +1,14 @@
+<svg width="800" height="1280" xmlns="http://www.w3.org/2000/svg">
+  <!-- IPTV Saba Presplash Screen -->
+  <rect width="800" height="1280" fill="#000000"/>
+  <rect x="100" y="480" width="600" height="320" rx="20" fill="#E50914"/>
+  <text x="400" y="600" font-family="Arial, sans-serif" font-size="80" font-weight="bold" fill="white" text-anchor="middle">
+    IPTV Saba
+  </text>
+  <text x="400" y="700" font-family="Arial, sans-serif" font-size="40" fill="white" text-anchor="middle">
+    Loading...
+  </text>
+  <circle cx="400" cy="900" r="40" fill="white" opacity="0.8">
+    <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+</svg>
