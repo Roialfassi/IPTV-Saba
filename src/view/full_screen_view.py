@@ -136,10 +136,13 @@ class FullScreenView(QWidget):
         self.update_timer.timeout.connect(self.update_ui)
         self.update_timer.start(1000)
 
+        # Attach player to video frame immediately (platform-specific)
+        # This works for both new and reused players
+        self.attach_player_to_window()
+
     def attach_player_to_window(self):
         """
         Attach the VLC player to the video frame window using platform-specific methods.
-        Must be called after the widget is shown and has a valid window ID.
         """
         if not self.player:
             return
@@ -154,17 +157,10 @@ class FullScreenView(QWidget):
             elif sys.platform == "darwin":
                 self.player.set_nsobject(int(self.video_frame.winId()))
                 logger.info(f"Attached player to Mac window: {self.video_frame.winId()}")
+            else:
+                logger.warning(f"Unknown platform: {sys.platform}")
         except Exception as e:
             logger.error(f"Error attaching player to window: {e}")
-
-    def showEvent(self, event):
-        """
-        Called when the widget is shown. Attach the player to ensure video displays.
-        """
-        super().showEvent(event)
-        # Attach player when shown to ensure proper video display
-        self.attach_player_to_window()
-        logger.info("FullScreenView shown - player attached")
 
     def play_channel(self):
         """
