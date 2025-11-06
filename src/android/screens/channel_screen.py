@@ -674,8 +674,7 @@ class ChannelScreen(Screen):
             self.active_recording_id = None
 
         # Clear auto-login
-        self.controller.config_manager.set('auto_login_enabled', False)
-        self.controller.config_manager.save()
+        self.controller.config_manager.auto_login_enabled = False
 
         # Return to login
         App.get_running_app().switch_screen('login')

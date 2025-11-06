@@ -84,14 +84,12 @@ class AndroidController(EventDispatcher):
         Returns True if a profile was auto-loaded.
         """
         try:
-            auto_login_enabled = self.config_manager.get('auto_login_enabled', False)
-            if auto_login_enabled:
-                profile_id = self.config_manager.get('last_active_profile_id')
-                if profile_id:
-                    profile = self.profile_manager.get_profile(profile_id)
-                    if profile:
-                        self.active_profile = profile
-                        return True
+            should_auto, profile_id = self.config_manager.should_auto_login()
+            if should_auto and profile_id:
+                profile = self.profile_manager.get_profile(profile_id)
+                if profile:
+                    self.active_profile = profile
+                    return True
             return False
         except Exception as e:
             logger.error(f"Auto Login Error: {e}")

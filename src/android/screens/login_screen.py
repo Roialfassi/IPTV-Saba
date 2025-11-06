@@ -184,7 +184,7 @@ class LoginScreen(Screen):
         main_layout.add_widget(auto_login_layout)
 
         # Load auto-login state
-        self.auto_login_checkbox.active = self.config_manager.get('auto_login_enabled', False)
+        self.auto_login_checkbox.active = self.config_manager.auto_login_enabled
 
         # Buttons
         buttons_layout = GridLayout(cols=2, size_hint_y=0.15, spacing=dp(10))
@@ -284,8 +284,7 @@ class LoginScreen(Screen):
 
             # Save last active profile
             if self.auto_login_checkbox.active:
-                self.config_manager.set('last_active_profile_id', self.selected_profile.name)
-                self.config_manager.save()
+                self.config_manager.last_active_profile_id = self.selected_profile.name
 
             # Navigate to channels screen
             App.get_running_app().switch_screen('channels')
@@ -371,5 +370,4 @@ class LoginScreen(Screen):
 
     def on_auto_login_changed(self, checkbox, value):
         """Handle auto-login checkbox change"""
-        self.config_manager.set('auto_login_enabled', value)
-        self.config_manager.save()
+        self.config_manager.auto_login_enabled = value
