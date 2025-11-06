@@ -25,11 +25,9 @@ if platform == 'android':
     ])
 
 # Import app components
-from src.controller.controller import Controller
-from src.data.config_manager import ConfigManager
-from src.data.profile_manager import ProfileManager
+from src.android.controller import AndroidController
 
-# Import Android screens (to be created)
+# Import Android screens
 from src.android.screens.login_screen import LoginScreen
 from src.android.screens.channel_screen import ChannelScreen
 from src.android.screens.easy_mode_screen import EasyModeScreen
@@ -44,9 +42,7 @@ class IPTVSabaApp(App):
         self.title = "IPTV Saba"
         self.icon = 'android/icon.png'
 
-        # Initialize managers
-        self.config_manager = None
-        self.profile_manager = None
+        # Initialize controller (contains managers)
         self.controller = None
 
         # Screen manager
@@ -57,8 +53,8 @@ class IPTVSabaApp(App):
         # Set window properties
         Window.clearcolor = (0.1, 0.1, 0.1, 1)  # Dark background
 
-        # Initialize data managers
-        self._initialize_managers()
+        # Initialize controller
+        self._initialize_controller()
 
         # Create screen manager with fade transition
         self.screen_manager = ScreenManager(transition=FadeTransition())
@@ -67,7 +63,7 @@ class IPTVSabaApp(App):
         self.screen_manager.add_widget(LoginScreen(
             name='login',
             controller=self.controller,
-            config_manager=self.config_manager
+            config_manager=self.controller.config_manager
         ))
         self.screen_manager.add_widget(ChannelScreen(
             name='channels',
@@ -90,40 +86,17 @@ class IPTVSabaApp(App):
 
         return self.screen_manager
 
-    def _initialize_managers(self):
-        """Initialize configuration and profile managers"""
-        # Determine storage path based on platform
-        if platform == 'android':
-            # Use Android external storage
-            storage_path = primary_external_storage_path()
-            app_dir = os.path.join(storage_path, 'IPTV-Saba')
-        else:
-            # Use home directory for desktop testing
-            app_dir = os.path.join(str(Path.home()), '.IPTV-Saba')
-
-        # Create directory if it doesn't exist
-        os.makedirs(app_dir, exist_ok=True)
-
-        # Initialize managers
-        self.config_manager = ConfigManager(app_dir)
-        self.profile_manager = ProfileManager(app_dir)
-        self.controller = Controller(
-            config_manager=self.config_manager,
-            profile_manager=self.profile_manager
+    def _initialize_controller(self):
+        """Initialize the Android controller"""
+        # Controller handles its own storage path detection
+        self.controller = AndroidController(
+            profiles_file="profiles.json",
+            folder_name='IPTV-Saba'
         )
 
     def _should_auto_login(self):
         """Check if auto-login is enabled and valid"""
-        if not self.config_manager.get('auto_login_enabled', False):
-            return False
-
-        last_profile_id = self.config_manager.get('last_active_profile_id')
-        if not last_profile_id:
-            return False
-
-        # Verify profile still exists
-        profiles = self.profile_manager.list_profiles()
-        return any(p.name == last_profile_id for p in profiles)
+        return self.controller.login_logic()
 
     def on_pause(self):
         """Handle app pause (Android lifecycle)"""
