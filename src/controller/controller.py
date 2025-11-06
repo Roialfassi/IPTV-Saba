@@ -98,17 +98,16 @@ class Controller(QObject):
             logger.error(f"Failed to create profile '{name}': {ve}")
             self.error_occurred.emit(str(ve))  # Emit error signal
 
-    @pyqtSlot(str, str, list)
-    def delete_profile(self, name: str, url: str) -> None:
+    @pyqtSlot(str)
+    def delete_profile(self, name: str) -> None:
         """
-        Creates a new profile.
+        Deletes an existing profile.
 
         Args:
-            name (str): The name of the new profile.
-            url (str): The URL associated with the new profile.
+            name (str): The name of the profile to delete.
         """
         try:
-            self.profile_manager.delete_profile(name, url)
+            self.profile_manager.delete_profile(name)
             logger.info(f"Profile '{name}' deleted.")
             self.profiles_updated.emit()  # Emit signal to update profile list
         except ValueError as ve:
@@ -137,7 +136,7 @@ class Controller(QObject):
         Args:
             group_name (str): The name of the group to select.
         """
-        group = self.data_loader.get(group_name)
+        group = self.data_loader.get_group(group_name)
         if group:
             self.selected_group = group
             logger.info(f"Group '{group_name}' selected.")

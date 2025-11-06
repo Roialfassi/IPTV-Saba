@@ -18,6 +18,7 @@ from src.model.group_model import Group  # for type hints
 from src.model.channel_model import Channel  # for type hints
 from src.model.profile import create_mock_profile, Profile
 from src.view.full_screen_view import FullScreenView
+from src.services.download_record_manager import DownloadRecordManager
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -159,6 +160,14 @@ class ChooseChannelScreen(QWidget):
         self.fullscreen_view = None
         self.thread = None
         self.worker = None
+
+        # Initialize download/record manager
+        downloads_dir = os.path.join(controller.config_dir, "downloads")
+        self.download_manager = DownloadRecordManager(downloads_dir)
+        self.setup_download_manager_signals()
+
+        # Track active downloads/recordings
+        self.active_recordings = {}  # {channel_name: recording_id}
 
         # Init loading overlay
         self.loading_overlay = LoadingOverlay(self)
@@ -595,6 +604,13 @@ class ChooseChannelScreen(QWidget):
         Args:
             position (QPoint): Position where the menu is requested.
         """
+        selected_item = self.channel_list.currentItem()
+        if not selected_item:
+            return
+
+        channel_name = selected_item.text()
+        channel = self.controller.find_channel_by_name(channel_name)
+
         menu = QMenu()
 
         add_favorite_action = QAction("Add to Favorites", self)
@@ -604,6 +620,28 @@ class ChooseChannelScreen(QWidget):
         remove_favorite_action = QAction("Remove from Favorites", self)
         remove_favorite_action.triggered.connect(self.remove_selected_from_favorites)
         menu.addAction(remove_favorite_action)
+
+        menu.addSeparator()
+
+        # Download/Record options
+        if channel and channel.stream_url:
+            if self.download_manager.is_media_file(channel.stream_url):
+                # It's a downloadable media file
+                download_action = QAction("📥 Download", self)
+                download_action.triggered.connect(lambda: self.download_channel(channel))
+                menu.addAction(download_action)
+            else:
+                # It's a livestream - can record
+                if channel_name in self.active_recordings:
+                    # Currently recording
+                    stop_record_action = QAction("⏹️ Stop Recording", self)
+                    stop_record_action.triggered.connect(lambda: self.stop_recording_channel(channel))
+                    menu.addAction(stop_record_action)
+                else:
+                    # Not recording
+                    record_action = QAction("🔴 Start Recording", self)
+                    record_action.triggered.connect(lambda: self.start_recording_channel(channel))
+                    menu.addAction(record_action)
 
         menu.exec_(self.channel_list.viewport().mapToGlobal(position))
 
@@ -681,10 +719,167 @@ class ChooseChannelScreen(QWidget):
         """
         QMessageBox.critical(self, "Error", message)
 
+    def setup_download_manager_signals(self):
+        """Setup signals for download/record manager."""
+        self.download_manager.download_progress.connect(self.on_download_progress)
+        self.download_manager.download_complete.connect(self.on_download_complete)
+        self.download_manager.download_error.connect(self.on_download_error)
+        self.download_manager.recording_started.connect(self.on_recording_started)
+        self.download_manager.recording_stopped.connect(self.on_recording_stopped)
+
+    def download_channel(self, channel: Channel):
+        """Start downloading a media file."""
+        download_id = f"download_{channel.name}_{id(channel)}"
+
+        reply = QMessageBox.question(
+            self, 'Download Channel',
+            f"Download '{channel.name}'?\n\nFile will be saved to:\n{self.download_manager.downloads_dir}",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            success = self.download_manager.start_download(download_id, channel.name, channel.stream_url)
+            if success:
+                QMessageBox.information(
+                    self, 'Download Started',
+                    f"Download started for '{channel.name}'\n\nCheck the downloads folder for progress."
+                )
+            else:
+                QMessageBox.warning(
+                    self, 'Download Failed',
+                    f"Failed to start download for '{channel.name}'"
+                )
+
+    def start_recording_channel(self, channel: Channel):
+        """Start recording a livestream."""
+        recording_id = f"record_{channel.name}_{id(channel)}"
+
+        reply = QMessageBox.question(
+            self, 'Record Channel',
+            f"Start recording '{channel.name}'?\n\nRecording will be saved to:\n{self.download_manager.downloads_dir}\n\nYou can stop recording from the context menu.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            success = self.download_manager.start_recording(recording_id, channel.name, channel.stream_url)
+            if success:
+                self.active_recordings[channel.name] = recording_id
+                QMessageBox.information(
+                    self, 'Recording Started',
+                    f"Recording started for '{channel.name}'\n\nRight-click the channel to stop recording."
+                )
+            else:
+                QMessageBox.warning(
+                    self, 'Recording Failed',
+                    f"Failed to start recording for '{channel.name}'"
+                )
+
+    def stop_recording_channel(self, channel: Channel):
+        """Stop recording a livestream."""
+        if channel.name not in self.active_recordings:
+            return
+
+        recording_id = self.active_recordings[channel.name]
+
+        reply = QMessageBox.question(
+            self, 'Stop Recording',
+            f"Stop recording '{channel.name}'?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            success = self.download_manager.stop_recording(recording_id)
+            if success:
+                del self.active_recordings[channel.name]
+
+    def on_download_progress(self, download_id: str, bytes_downloaded: int, total_bytes: int):
+        """Handle download progress updates."""
+        if total_bytes > 0:
+            percent = (bytes_downloaded / total_bytes) * 100
+            logger.debug(f"Download progress: {percent:.1f}% ({bytes_downloaded}/{total_bytes} bytes)")
+
+    def on_download_complete(self, download_id: str, filepath: str):
+        """Handle download completion."""
+        logger.info(f"Download complete: {filepath}")
+        QMessageBox.information(
+            self, 'Download Complete',
+            f"Download completed successfully!\n\nSaved to:\n{filepath}"
+        )
+
+    def on_download_error(self, download_id: str, error_message: str):
+        """Handle download errors."""
+        logger.error(f"Download error: {error_message}")
+        QMessageBox.critical(
+            self, 'Download Error',
+            f"Download failed:\n{error_message}"
+        )
+
+    def on_recording_started(self, recording_id: str):
+        """Handle recording start."""
+        logger.info(f"Recording started: {recording_id}")
+
+    def on_recording_stopped(self, recording_id: str, filepath: str):
+        """Handle recording stop."""
+        logger.info(f"Recording stopped: {filepath}")
+        QMessageBox.information(
+            self, 'Recording Saved',
+            f"Recording saved successfully!\n\nSaved to:\n{filepath}"
+        )
+
+    def attach_player_to_window(self):
+        """
+        Attach the VLC player to the video frame window using platform-specific methods.
+        """
+        if not hasattr(self, 'player') or not self.player:
+            return
+
+        if not hasattr(self, 'video_frame'):
+            return
+
+        try:
+            if sys.platform.startswith('linux'):
+                self.player.set_xwindow(int(self.video_frame.winId()))
+                logger.info(f"Attached player to Linux window: {self.video_frame.winId()}")
+            elif sys.platform == "win32":
+                self.player.set_hwnd(int(self.video_frame.winId()))
+                logger.info(f"Attached player to Windows window: {self.video_frame.winId()}")
+            elif sys.platform == "darwin":
+                self.player.set_nsobject(int(self.video_frame.winId()))
+                logger.info(f"Attached player to Mac window: {self.video_frame.winId()}")
+
+            # Force player to refresh video output after reattaching
+            if self.player.is_playing():
+                logger.info("Player is playing - forcing video refresh on main window")
+                current_pos = self.player.get_position()
+                self.player.pause()
+                QTimer.singleShot(50, lambda: self.player.play())
+                if current_pos > 0.0:
+                    QTimer.singleShot(100, lambda: self.player.set_position(current_pos))
+            else:
+                logger.warning("Player not playing - starting playback")
+                self.player.play()
+
+        except Exception as e:
+            logger.error(f"Error attaching player to window: {e}")
+
+    def showEvent(self, event):
+        """
+        Called when the widget is shown. Reattach the player to ensure video continues.
+        """
+        super().showEvent(event)
+        # Reattach player when returning from fullscreen (with small delay)
+        if hasattr(self, 'player') and self.player:
+            logger.info("ChooseChannelScreen showEvent triggered - reattaching player")
+            QTimer.singleShot(100, self.attach_player_to_window)
+
     def closeEvent(self, event):
         """
         Ensures that the VLC player is properly released when the widget is closed.
         """
+        # Clean up all downloads and recordings
+        if hasattr(self, 'download_manager'):
+            self.download_manager.cleanup_all()
+
         if self.player:
             self.player.stop()
             self.player.release()
@@ -693,14 +888,49 @@ class ChooseChannelScreen(QWidget):
         event.accept()
 
     def open_fullscreen_view(self, channel: Channel):
+        """
+        Open fullscreen view. Stop current player and let fullscreen create its own.
+        This matches the working pattern from the test code.
+        """
+        # Stop the player in this window
+        if hasattr(self, 'player') and self.player:
+            logger.info("Stopping player before fullscreen")
+            self.player.stop()
+
+        # Create fullscreen view WITHOUT passing player (let it create its own)
+        # This matches the test code pattern that works
         self.fullscreen_view = FullScreenView(channel)
         self.fullscreen_view.go_back_signal.connect(self.on_fullscreen_view_closed)
+
+        # Show fullscreen
         self.fullscreen_view.showFullScreen()
+
+        # Hide this window
         self.hide()
 
+        logger.info("Opened fullscreen view with new player instance")
+
     def on_fullscreen_view_closed(self):
+        """
+        Handle returning from fullscreen view.
+        Restart playback of the channel that was playing.
+        """
+        # Close and cleanup fullscreen view
+        if self.fullscreen_view:
+            self.fullscreen_view.close()
+            self.fullscreen_view = None
+
+        # Show this window
         self.show()
-        self.fullscreen_view = None
+
+        # Restart the channel that was playing
+        if self.active_channel:
+            logger.info(f"Restarting playback of {self.active_channel.name}")
+            self.play_stream(self.active_channel.stream_url)
+        else:
+            logger.info("No active channel to restart")
+
+        logger.info("Returned from fullscreen view")
 
     @pyqtSlot()
     def logout(self):

@@ -1,4 +1,5 @@
 import sys
+import logging
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QFrame, QSlider)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
@@ -6,26 +7,48 @@ import vlc
 
 from src.model.channel_model import Channel
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 
 class FullScreenView(QWidget):
     """
     A full-screen media player that takes a URL, plays the channel, and provides limited controls.
     Keys include: back to `ChooseChannelScreen`, volume control, and play/pause.
+
+    NOTE: This view reuses the existing VLC player instance to avoid dual streams.
     """
 
     go_back_signal = pyqtSignal()  # Signal to emit when going back to ChooseChannelScreen
 
-    def __init__(self, channel: Channel):
+    def __init__(self, channel: Channel, existing_player=None, existing_instance=None):
         super().__init__()
         self.channel_name = channel.name
         self.stream_url = channel.stream_url
-        self.vlc_instance = vlc.Instance()
-        self.player = self.vlc_instance.media_player_new()
-        self.is_playing = False
+
+        # Reuse existing player if provided to avoid dual streams
+        if existing_player and existing_instance:
+            self.vlc_instance = existing_instance
+            self.player = existing_player
+            self.is_playing = True  # Already playing
+            logger.info("Reusing existing VLC player instance (avoiding dual stream)")
+        else:
+            self.vlc_instance = vlc.Instance()
+            self.player = self.vlc_instance.media_player_new()
+            self.is_playing = False
+            logger.info("Created new VLC player instance")
+
         self.is_muted = False
         self.init_ui()
         self.setMouseTracking(True)
-        self.play_channel()
+
+        # Only start playing if we created a new player
+        if not (existing_player and existing_instance):
+            self.play_channel()
+        else:
+            # Just update the UI to reflect current state
+            self.play_pause_button.setText("Pause")
+
         self.hide_controls_timer = QTimer(self, interval=2000)  # Hide controls after 2 seconds of inactivity
         self.hide_controls_timer.timeout.connect(self.hide_controls)
         self.hide_controls_timer.start(2000)
@@ -108,13 +131,71 @@ class FullScreenView(QWidget):
         self.channel_label.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(self.channel_label)
 
-        # Set up the VLC player with the video frame
-        self.player.set_hwnd(self.video_frame.winId())
-
         # Timer to update the UI
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.update_ui)
         self.update_timer.start(1000)
+
+    def attach_player_to_window(self):
+        """
+        Attach the VLC player to the video frame window using platform-specific methods.
+        This must be called AFTER the widget is shown to ensure valid window ID.
+        """
+        if not self.player:
+            logger.warning("No player to attach")
+            return
+
+        if not hasattr(self, 'video_frame'):
+            logger.warning("No video frame to attach to")
+            return
+
+        try:
+            win_id = int(self.video_frame.winId())
+            logger.info(f"Attempting to attach player to window ID: {win_id}")
+
+            if sys.platform.startswith('linux'):
+                self.player.set_xwindow(win_id)
+                logger.info(f"✓ Attached player to Linux X11 window: {win_id}")
+            elif sys.platform == "win32":
+                self.player.set_hwnd(win_id)
+                logger.info(f"✓ Attached player to Windows HWND: {win_id}")
+            elif sys.platform == "darwin":
+                self.player.set_nsobject(win_id)
+                logger.info(f"✓ Attached player to macOS NSObject: {win_id}")
+            else:
+                logger.error(f"Unsupported platform: {sys.platform}")
+
+            # CRITICAL: Force player to refresh video output after attaching to new window
+            # The player is already playing but needs to re-render to the new window
+            if self.player.is_playing():
+                logger.info("Player is playing - forcing video refresh")
+                # Get current position to restore after
+                current_pos = self.player.get_position()
+                # Pause and immediately play to force re-render
+                self.player.pause()
+                QTimer.singleShot(50, lambda: self.player.play())
+                # Restore position if we were not at the beginning
+                if current_pos > 0.0:
+                    QTimer.singleShot(100, lambda: self.player.set_position(current_pos))
+                logger.info("Video refresh triggered")
+            else:
+                logger.warning("Player is not playing - starting playback")
+                self.player.play()
+
+        except Exception as e:
+            logger.error(f"Error attaching player to window: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def showEvent(self, event):
+        """
+        Called when the widget is shown.
+        This is the right time to attach the player - window is ready and has valid ID.
+        """
+        super().showEvent(event)
+        logger.info("FullScreenView showEvent triggered - attaching player now")
+        # Small delay to ensure window is fully ready
+        QTimer.singleShot(100, self.attach_player_to_window)
 
     def play_channel(self):
         """
@@ -148,8 +229,9 @@ class FullScreenView(QWidget):
     def go_back(self):
         """
         Emit a signal to go back to the ChooseChannelScreen.
+        NOTE: We don't stop the player here anymore since it's shared with ChooseChannelScreen.
         """
-        self.player.stop()
+        # Don't stop the player - let ChooseChannelScreen handle it
         self.go_back_signal.emit()
 
     def keyPressEvent(self, event):
@@ -180,9 +262,9 @@ class FullScreenView(QWidget):
 
     def closeEvent(self, event):
         """
-        Ensure the VLC player is stopped when the window is closed.
+        Handle window close event.
+        NOTE: We don't stop the player here since it's shared with ChooseChannelScreen.
         """
-        self.player.stop()
         event.accept()
 
     def mouseMoveEvent(self, event):

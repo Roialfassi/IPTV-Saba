@@ -4,9 +4,8 @@ from src.model.group_model import Group
 from src.model.channel_model import Channel
 import requests
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Union, Pattern
+from typing import List, Dict, Optional, Union, Pattern, Callable
 import re
-import requests
 from urllib.parse import urlparse
 import os
 import logging
@@ -14,6 +13,10 @@ import io
 import chardet
 from collections import defaultdict
 from PyQt5.QtCore import pyqtSignal, QObject, pyqtSlot, QThread
+import threading
+from queue import Queue
+import concurrent.futures
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -55,17 +58,25 @@ class DataLoader:
         """Get all channels across all groups."""
         return self._channels
 
-    def load(self, source: str) -> bool:
+    def load(self, source: str, use_optimized: bool = True) -> bool:
         """
         Load and parse M3U data from various sources.
 
         Args:
             source: URL, file path, or M3U content string
+            use_optimized: Use optimized streaming parser (default True)
 
         Returns:
             True if parsing was successful, False otherwise
         """
         try:
+            # Use optimized streaming parser for URLs
+            parsed_url = urlparse(source)
+            if use_optimized and parsed_url.scheme in ('http', 'https'):
+                logger.info("Using optimized streaming parser for faster loading")
+                return self._load_and_parse_streaming(source)
+
+            # Fall back to traditional method for files and direct content
             content = self._get_content(source)
             if not content:
                 return False
@@ -244,6 +255,187 @@ class DataLoader:
 
         return metadata
 
+    def _load_and_parse_streaming(self, url: str) -> bool:
+        """
+        Optimized streaming loader that downloads and parses M3U in parallel chunks.
+        This significantly improves loading speed by:
+        1. Streaming download (processing data as it arrives)
+        2. Incremental parsing (parsing lines immediately)
+        3. Parallel processing (using thread pool for channel creation)
+
+        Args:
+            url: The URL to download from
+
+        Returns:
+            True if parsing was successful, False otherwise
+        """
+        try:
+            # Clear existing data
+            self._groups = {}
+            self._channels = []
+
+            # Shared data structures with thread safety
+            groups_lock = threading.Lock()
+            channels_lock = threading.Lock()
+            group_cache = {}
+
+            # Pre-compile regex patterns for better performance
+            attr_pattern = re.compile(r'([\w-]+)="([^"]*)"')
+            alt_attr_pattern = re.compile(r'([\w-]+)=([^ "]+)')
+            name_pattern = re.compile(r'#EXTINF:.*?,(.*?)$')
+
+            # Statistics
+            start_time = time.time()
+            bytes_downloaded = 0
+
+            # Make streaming request
+            logger.info(f"Starting optimized streaming download from {url}")
+            response = requests.get(url, stream=True, timeout=30)
+            response.raise_for_status()
+
+            # Detect encoding from first chunk
+            first_chunk = next(response.iter_content(8192), b'')
+            if not first_chunk:
+                raise self.SourceError("Empty response from server")
+
+            detected = chardet.detect(first_chunk)
+            encoding = detected['encoding'] if detected['confidence'] > 0.7 else 'utf-8'
+            logger.debug(f"Detected encoding: {encoding} (confidence: {detected.get('confidence', 0):.2f})")
+
+            # Process data in chunks with streaming parser
+            line_buffer = first_chunk.decode(encoding, errors='replace')
+            bytes_downloaded += len(first_chunk)
+
+            # Validate M3U header
+            if not line_buffer.strip().startswith("#EXTM3U"):
+                raise self.ParseError("Invalid M3U format: missing #EXTM3U header")
+
+            # Queue for parallel processing
+            channel_queue = Queue()
+            processing_complete = threading.Event()
+
+            # Worker function for parallel channel processing
+            def process_channel_worker():
+                while not processing_complete.is_set() or not channel_queue.empty():
+                    try:
+                        item = channel_queue.get(timeout=0.1)
+                        if item is None:  # Poison pill
+                            break
+
+                        metadata, stream_url = item
+
+                        # Create channel
+                        channel = Channel(
+                            name=metadata.get('name', f"Channel_{len(self._channels) + 1}"),
+                            stream_url=stream_url,
+                            tvg_id=metadata.get('tvg-id', ''),
+                            tvg_logo=metadata.get('tvg-logo', '')
+                        )
+
+                        # Add to appropriate group (thread-safe)
+                        group_name = metadata.get('group-title', self.default_group_name)
+
+                        with groups_lock:
+                            if group_name not in group_cache:
+                                if group_name not in self._groups:
+                                    self._groups[group_name] = Group(name=group_name)
+                                group_cache[group_name] = self._groups[group_name]
+
+                            group_cache[group_name].channels.append(channel)
+
+                        with channels_lock:
+                            self._channels.append(channel)
+
+                        channel_queue.task_done()
+                    except:
+                        pass
+
+            # Start worker threads (4 workers for parallel processing)
+            num_workers = 4
+            workers = []
+            for _ in range(num_workers):
+                worker = threading.Thread(target=process_channel_worker, daemon=True)
+                worker.start()
+                workers.append(worker)
+
+            # Parse incrementally as chunks arrive
+            current_extinf = None
+            lines_processed = 0
+
+            def process_lines(text_chunk):
+                nonlocal line_buffer, current_extinf, lines_processed
+
+                line_buffer += text_chunk
+
+                # Process complete lines
+                while '\n' in line_buffer:
+                    line, line_buffer = line_buffer.split('\n', 1)
+                    line = line.strip()
+
+                    if not line:
+                        continue
+
+                    lines_processed += 1
+
+                    # Process EXTINF line
+                    if line.startswith("#EXTINF:"):
+                        current_extinf = self._parse_extinf(line, name_pattern, attr_pattern, alt_attr_pattern)
+
+                    # Process stream URL
+                    elif current_extinf and not line.startswith('#'):
+                        stream_url = line
+                        # Queue for parallel processing
+                        channel_queue.put((current_extinf, stream_url))
+                        current_extinf = None
+
+            # Process first chunk
+            process_lines("")
+
+            # Stream remaining chunks
+            chunk_size = 65536  # 64KB chunks for optimal performance
+            for chunk in response.iter_content(chunk_size):
+                if chunk:
+                    bytes_downloaded += len(chunk)
+                    decoded_chunk = chunk.decode(encoding, errors='replace')
+                    process_lines(decoded_chunk)
+
+            # Process any remaining buffered data
+            if line_buffer.strip():
+                process_lines("\n")
+
+            # Wait for all queued items to be processed
+            logger.debug("Waiting for worker threads to complete processing...")
+            channel_queue.join()
+
+            # Signal workers to stop
+            processing_complete.set()
+            for _ in range(num_workers):
+                channel_queue.put(None)  # Poison pill for each worker
+
+            # Wait for workers to finish
+            for worker in workers:
+                worker.join(timeout=5)
+
+            elapsed_time = time.time() - start_time
+            speed_mbps = (bytes_downloaded / 1024 / 1024) / elapsed_time if elapsed_time > 0 else 0
+
+            logger.info(f"✓ Optimized loading complete:")
+            logger.info(f"  - Downloaded: {bytes_downloaded / 1024 / 1024:.2f} MB")
+            logger.info(f"  - Time: {elapsed_time:.2f} seconds")
+            logger.info(f"  - Speed: {speed_mbps:.2f} MB/s")
+            logger.info(f"  - Lines processed: {lines_processed}")
+            logger.info(f"  - Channels loaded: {len(self._channels)}")
+            logger.info(f"  - Groups: {len(self._groups)}")
+
+            return len(self._channels) > 0
+
+        except requests.RequestException as e:
+            logger.error(f"Network error during streaming download: {e}")
+            raise self.SourceError(f"Failed to fetch M3U from URL: {e}")
+        except Exception as e:
+            logger.error(f"Error in streaming parser: {e}")
+            raise self.ParseError(f"Parsing error: {e}")
+
     def get_group(self, name: str) -> Optional[Group]:
         """
         Find a specific group by exact name.
@@ -255,6 +447,21 @@ class DataLoader:
             Group object or None if not found
         """
         return self._groups.get(name)
+
+    def get_channel_by_name(self, channel_name: str) -> Optional[Channel]:
+        """
+        Find a channel by name across all groups.
+
+        Args:
+            channel_name: Channel name to find
+
+        Returns:
+            Channel object or None if not found
+        """
+        for channel in self._channels:
+            if channel.name.lower() == channel_name.lower():
+                return channel
+        return None
 
     def find_groups(self, pattern: Union[str, Pattern]) -> List[Group]:
         """
@@ -357,7 +564,7 @@ class DataLoader:
 
             return True
         except Exception as e:
-            self._logger.error(f"Error saving to JSON: {e}")
+            logger.error(f"Error saving to JSON: {e}")
             return False
 
     def load_from_json(self, file_path: str) -> bool:
@@ -403,7 +610,7 @@ class DataLoader:
 
             return len(self._channels) > 0
         except Exception as e:
-            self._logger.error(f"Error loading from JSON: {e}")
+            logger.error(f"Error loading from JSON: {e}")
             return False
 
 if __name__ == "__main__":
