@@ -854,10 +854,10 @@ class ChooseChannelScreen(QWidget):
         Called when the widget is shown. Reattach the player to ensure video continues.
         """
         super().showEvent(event)
-        # Reattach player when returning from fullscreen
+        # Reattach player when returning from fullscreen (with small delay)
         if hasattr(self, 'player') and self.player:
-            self.attach_player_to_window()
-            logger.info("ChooseChannelScreen shown - player reattached")
+            logger.info("ChooseChannelScreen showEvent triggered - reattaching player")
+            QTimer.singleShot(100, self.attach_player_to_window)
 
     def closeEvent(self, event):
         """

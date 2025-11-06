@@ -136,31 +136,48 @@ class FullScreenView(QWidget):
         self.update_timer.timeout.connect(self.update_ui)
         self.update_timer.start(1000)
 
-        # Attach player to video frame immediately (platform-specific)
-        # This works for both new and reused players
-        self.attach_player_to_window()
-
     def attach_player_to_window(self):
         """
         Attach the VLC player to the video frame window using platform-specific methods.
+        This must be called AFTER the widget is shown to ensure valid window ID.
         """
         if not self.player:
+            logger.warning("No player to attach")
+            return
+
+        if not hasattr(self, 'video_frame'):
+            logger.warning("No video frame to attach to")
             return
 
         try:
+            win_id = int(self.video_frame.winId())
+            logger.info(f"Attempting to attach player to window ID: {win_id}")
+
             if sys.platform.startswith('linux'):
-                self.player.set_xwindow(int(self.video_frame.winId()))
-                logger.info(f"Attached player to Linux window: {self.video_frame.winId()}")
+                self.player.set_xwindow(win_id)
+                logger.info(f"✓ Attached player to Linux X11 window: {win_id}")
             elif sys.platform == "win32":
-                self.player.set_hwnd(int(self.video_frame.winId()))
-                logger.info(f"Attached player to Windows window: {self.video_frame.winId()}")
+                self.player.set_hwnd(win_id)
+                logger.info(f"✓ Attached player to Windows HWND: {win_id}")
             elif sys.platform == "darwin":
-                self.player.set_nsobject(int(self.video_frame.winId()))
-                logger.info(f"Attached player to Mac window: {self.video_frame.winId()}")
+                self.player.set_nsobject(win_id)
+                logger.info(f"✓ Attached player to macOS NSObject: {win_id}")
             else:
-                logger.warning(f"Unknown platform: {sys.platform}")
+                logger.error(f"Unsupported platform: {sys.platform}")
         except Exception as e:
             logger.error(f"Error attaching player to window: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def showEvent(self, event):
+        """
+        Called when the widget is shown.
+        This is the right time to attach the player - window is ready and has valid ID.
+        """
+        super().showEvent(event)
+        logger.info("FullScreenView showEvent triggered - attaching player now")
+        # Small delay to ensure window is fully ready
+        QTimer.singleShot(100, self.attach_player_to_window)
 
     def play_channel(self):
         """
