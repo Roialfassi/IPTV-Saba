@@ -284,8 +284,8 @@ android.allow_backup = True
 #p4a.fork = kivy
 
 # (str) python-for-android branch to use, defaults to master
-# Using develop branch for latest pyjnius fixes
-p4a.branch = develop
+# Using master branch for stability (develop has _remote_debugging_module build errors)
+p4a.branch = master
 
 # (str) python-for-android git clone directory (if empty, it will be automatically cloned from github)
 #p4a.source_dir =

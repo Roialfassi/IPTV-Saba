@@ -277,7 +277,9 @@ class ChannelScreen(Screen):
         try:
             profile = self.controller.active_profile
             config_dir = self.controller.config_dir
-            data_path = Path(os.path.join(config_dir, (profile.name + "data.json")))
+            # Sanitize profile name for safe file naming (remove path separators)
+            safe_name = profile.name.replace('/', '_').replace('\\', '_').replace(':', '_')
+            data_path = Path(os.path.join(config_dir, (safe_name + "data.json")))
 
             # Create data loader
             self.data_loader = DataLoader()
@@ -309,7 +311,8 @@ class ChannelScreen(Screen):
             self.loading_popup.dismiss()
 
         # Get groups and channels
-        self.groups = self.data_loader.get_groups()
+        # DataLoader.groups is Dict[str, Group], convert to list
+        self.groups = list(self.data_loader.groups.values())
         self.channels = []
         for group in self.groups:
             self.channels.extend(group.channels)

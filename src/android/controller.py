@@ -224,7 +224,8 @@ class AndroidController(EventDispatcher):
 
     def get_groups(self) -> List[Group]:
         """Get all channel groups from data loader"""
-        return self.data_loader.get_groups()
+        # DataLoader.groups returns Dict[str, Group], convert to list
+        return list(self.data_loader.groups.values())
 
     def get_channels(self, group_name: Optional[str] = None) -> List[Channel]:
         """
@@ -234,16 +235,16 @@ class AndroidController(EventDispatcher):
         Returns:
             List of Channel objects
         """
-        groups = self.data_loader.get_groups()
         if group_name:
-            for group in groups:
-                if group.name == group_name:
-                    return group.channels
+            # DataLoader.groups is a Dict[str, Group]
+            group = self.data_loader.groups.get(group_name)
+            if group:
+                return group.channels
             return []
         else:
             # Return all channels from all groups
             all_channels = []
-            for group in groups:
+            for group in self.data_loader.groups.values():
                 all_channels.extend(group.channels)
             return all_channels
 
