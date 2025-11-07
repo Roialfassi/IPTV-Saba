@@ -32,9 +32,14 @@ version = 1.0.0
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-# Note: Removed pyjnius and plyer - they cause build issues and are only needed for download/record features
+# Note: Removed packages that aren't used or cause build issues:
+# - pyjnius, plyer: Build errors, only needed for download/record features
+# - aiohttp: Not used in codebase, complex C dependencies
+# - pyyaml: Not used in codebase
+# - python-dateutil: Not used in codebase
+# - chardet: Made optional in data_loader.py (encoding detection)
 # Core requirements for basic app functionality: video playback, channel selection, profiles
-requirements = python3,kivy,pillow,requests,aiohttp,chardet,pyyaml,python-dateutil,android
+requirements = python3,kivy==2.3.0,pillow,requests,android
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes

@@ -10,7 +10,11 @@ from urllib.parse import urlparse
 import os
 import logging
 import io
-import chardet
+try:
+    import chardet
+    CHARDET_AVAILABLE = True
+except ImportError:
+    CHARDET_AVAILABLE = False
 from collections import defaultdict
 from PyQt5.QtCore import pyqtSignal, QObject, pyqtSlot, QThread
 import threading
@@ -57,6 +61,24 @@ class DataLoader:
     def channels(self) -> List[Channel]:
         """Get all channels across all groups."""
         return self._channels
+
+    def _detect_encoding(self, content: bytes) -> str:
+        """
+        Detect encoding of byte content.
+        Falls back to UTF-8 if chardet is not available.
+
+        Args:
+            content: Byte content to detect encoding for
+
+        Returns:
+            Encoding name (e.g., 'utf-8', 'iso-8859-1')
+        """
+        if CHARDET_AVAILABLE:
+            detected = chardet.detect(content)
+            if detected and detected.get('confidence', 0) > 0.7:
+                return detected['encoding']
+        # Fallback to UTF-8 if chardet unavailable or low confidence
+        return 'utf-8'
 
     def load(self, source: str, use_optimized: bool = True) -> bool:
         """
@@ -112,8 +134,7 @@ class DataLoader:
                 # Detect encoding
                 encoding = response.encoding
                 if not encoding or encoding.lower() == 'iso-8859-1':
-                    detected = chardet.detect(response.content)
-                    encoding = detected['encoding'] if detected['confidence'] > 0.7 else 'utf-8'
+                    encoding = self._detect_encoding(response.content)
 
                 return response.content.decode(encoding, errors='replace')
             except requests.RequestException as e:
@@ -126,8 +147,7 @@ class DataLoader:
                     content = f.read()
 
                 # Detect encoding
-                detected = chardet.detect(content)
-                encoding = detected['encoding'] if detected['confidence'] > 0.7 else 'utf-8'
+                encoding = self._detect_encoding(content)
 
                 return content.decode(encoding, errors='replace')
             except (IOError, UnicodeDecodeError) as e:
@@ -298,9 +318,8 @@ class DataLoader:
             if not first_chunk:
                 raise self.SourceError("Empty response from server")
 
-            detected = chardet.detect(first_chunk)
-            encoding = detected['encoding'] if detected['confidence'] > 0.7 else 'utf-8'
-            logger.debug(f"Detected encoding: {encoding} (confidence: {detected.get('confidence', 0):.2f})")
+            encoding = self._detect_encoding(first_chunk)
+            logger.debug(f"Detected encoding: {encoding}")
 
             # Process data in chunks with streaming parser
             line_buffer = first_chunk.decode(encoding, errors='replace')
