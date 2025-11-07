@@ -87,10 +87,10 @@ class FullscreenScreen(Screen):
 
         # Back button
         back_btn = Button(
-            text="◀ Back",
+            text="Back",
             size_hint_x=0.25,
             background_color=(0.3, 0.3, 0.3, 1),
-            font_size=dp(18),
+            font_size=dp(16),
             bold=True
         )
         back_btn.bind(on_press=self.go_back)
@@ -98,10 +98,10 @@ class FullscreenScreen(Screen):
 
         # Play/Pause button
         self.play_pause_btn = Button(
-            text="⏸ Pause",
+            text="Pause",
             size_hint_x=0.25,
             background_color=(0.898, 0.035, 0.078, 1),
-            font_size=dp(18),
+            font_size=dp(16),
             bold=True
         )
         self.play_pause_btn.bind(on_press=self.toggle_play_pause)
@@ -110,8 +110,8 @@ class FullscreenScreen(Screen):
         # Volume controls
         volume_layout = BoxLayout(size_hint_x=0.5, spacing=dp(10))
         volume_layout.add_widget(Label(
-            text="🔊",
-            font_size=dp(18),
+            text="Vol",
+            font_size=dp(14),
             size_hint_x=0.15
         ))
 
@@ -182,23 +182,43 @@ class FullscreenScreen(Screen):
             # Set video source
             self.video_player.source = self.channel.stream_url
             self.video_player.state = 'play'
-            self.play_pause_btn.text = "⏸ Pause"
+            self.play_pause_btn.text = "Pause"
 
             # Set initial volume
             self.video_player.volume = self.volume_slider.value / 100.0
+
+            self.status_label.text = "Loading stream..."
+            self.status_label.color = (0.8, 0.8, 0.8, 1)
+
+            # Bind to video events to track playback
+            self.video_player.bind(on_load=self._on_video_load)
+            self.video_player.bind(on_error=self._on_video_error)
 
         except Exception as e:
             self.status_label.text = f"Error: {str(e)}"
             self.status_label.color = (1, 0.2, 0.2, 1)
 
+    def _on_video_load(self, instance):
+        """Called when video successfully loads"""
+        self.status_label.text = "Playing..."
+        self.status_label.color = (0.2, 1, 0.2, 1)
+
+    def _on_video_error(self, instance, error):
+        """Called when video playback error occurs"""
+        error_msg = "Video backend not available. Install GStreamer or ffpyplayer."
+        self.status_label.text = error_msg
+        self.status_label.color = (1, 0.2, 0.2, 1)
+
     def toggle_play_pause(self, instance):
         """Toggle play/pause"""
         if self.video_player.state == 'play':
             self.video_player.state = 'pause'
-            self.play_pause_btn.text = "▶ Play"
+            self.play_pause_btn.text = "Play"
+            self.status_label.text = "Paused"
         else:
             self.video_player.state = 'play'
-            self.play_pause_btn.text = "⏸ Pause"
+            self.play_pause_btn.text = "Pause"
+            self.status_label.text = "Playing..."
 
         # Reset hide timer
         self.schedule_hide_controls()

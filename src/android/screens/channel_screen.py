@@ -38,8 +38,8 @@ class LoadingPopup(Popup):
         content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
 
         spinner = Label(
-            text="⟳",
-            font_size=dp(50),
+            text="Loading...",
+            font_size=dp(16),
             color=(0.898, 0.035, 0.078, 1)
         )
         content.add_widget(spinner)
@@ -373,10 +373,10 @@ class ChannelScreen(Screen):
             # Favorite button
             is_favorite = self.is_favorite(channel)
             fav_btn = Button(
-                text="★" if is_favorite else "☆",
+                text="FAV" if is_favorite else "Add",
                 size_hint_x=0.15,
                 background_color=(0.898, 0.035, 0.078, 1) if is_favorite else (0.3, 0.3, 0.3, 1),
-                font_size=dp(18)
+                font_size=dp(12)
             )
             fav_btn.bind(on_press=lambda x, c=channel: self.toggle_favorite(c))
             channel_layout.add_widget(fav_btn)
@@ -441,7 +441,8 @@ class ChannelScreen(Screen):
         """Check if channel is in favorites"""
         if not self.controller.active_profile:
             return False
-        return channel.name in self.controller.active_profile.favorites
+        # favorites contains Channel objects, check by name
+        return any(fav.name == channel.name for fav in self.controller.active_profile.favorites)
 
     def toggle_favorite(self, channel):
         """Toggle channel favorite status"""
@@ -449,10 +450,15 @@ class ChannelScreen(Screen):
             return
 
         profile = self.controller.active_profile
-        if channel.name in profile.favorites:
-            profile.favorites.remove(channel.name)
+        # favorites contains Channel objects
+        is_fav = any(fav.name == channel.name for fav in profile.favorites)
+
+        if is_fav:
+            # Remove the channel object from favorites
+            profile.favorites = [fav for fav in profile.favorites if fav.name != channel.name]
         else:
-            profile.add_to_favorites(channel.name)
+            # Add the channel object to favorites
+            profile.add_to_favorites(channel)
 
         # Save profile
         self.controller.profile_manager.update_profile(profile)
@@ -471,7 +477,7 @@ class ChannelScreen(Screen):
 
         # Add to history
         if self.controller.active_profile:
-            self.controller.active_profile.add_to_history(self.selected_channel.name)
+            self.controller.active_profile.add_to_history(self.selected_channel)
             self.controller.profile_manager.update_profile(self.controller.active_profile)
 
         # For now, just go to fullscreen
@@ -491,7 +497,7 @@ class ChannelScreen(Screen):
 
         # Add to history
         if self.controller.active_profile:
-            self.controller.active_profile.add_to_history(self.selected_channel.name)
+            self.controller.active_profile.add_to_history(self.selected_channel)
             self.controller.profile_manager.update_profile(self.controller.active_profile)
 
         # Navigate to fullscreen with channel data
