@@ -99,11 +99,11 @@ class FullscreenScreen(Screen):
                 )
                 main_layout.add_widget(self.desktop_label)
 
-        # Controls overlay container
+        # Controls overlay container - increased height for more controls
         self.controls_overlay = BoxLayout(
             orientation='vertical',
             size_hint=(1, None),
-            height=dp(150),
+            height=dp(200),
             pos_hint={'x': 0, 'bottom': 1},
             padding=dp(15),
             spacing=dp(10)
@@ -111,7 +111,7 @@ class FullscreenScreen(Screen):
 
         # Set semi-transparent background for controls
         with self.controls_overlay.canvas.before:
-            Color(0, 0, 0, 0.7)
+            Color(0, 0, 0, 0.8)
             self.controls_bg = Rectangle(
                 size=self.controls_overlay.size,
                 pos=self.controls_overlay.pos
@@ -121,49 +121,108 @@ class FullscreenScreen(Screen):
             pos=self._update_controls_bg
         )
 
-        # Channel info
+        # Top row: Channel info and close button
+        top_row = BoxLayout(size_hint_y=0.25, spacing=dp(10))
+
         self.channel_label = Label(
             text="",
-            size_hint_y=0.3,
-            font_size=dp(20),
+            size_hint_x=0.8,
+            font_size=dp(18),
             bold=True,
-            color=(1, 1, 1, 1)
+            color=(1, 1, 1, 1),
+            halign='left',
+            valign='middle'
         )
-        self.controls_overlay.add_widget(self.channel_label)
+        self.channel_label.bind(size=self.channel_label.setter('text_size'))
+        top_row.add_widget(self.channel_label)
 
-        # Control buttons
-        controls_layout = BoxLayout(size_hint_y=0.4, spacing=dp(15))
-
-        # Back button
-        back_btn = Button(
-            text="Back",
-            size_hint_x=0.5,
+        # Close/Back button (always visible)
+        close_btn = Button(
+            text="X",
+            size_hint_x=0.2,
             background_color=(0.898, 0.035, 0.078, 1),
-            font_size=dp(16),
+            font_size=dp(20),
             bold=True
         )
-        back_btn.bind(on_press=self.go_back)
-        controls_layout.add_widget(back_btn)
+        close_btn.bind(on_press=self.go_back)
+        top_row.add_widget(close_btn)
+
+        self.controls_overlay.add_widget(top_row)
+
+        # Middle row: Play/Pause and navigation buttons
+        middle_row = BoxLayout(size_hint_y=0.3, spacing=dp(10))
+
+        # Back to channels button
+        back_channels_btn = Button(
+            text="< Channels",
+            size_hint_x=0.33,
+            background_color=(0.3, 0.3, 0.3, 1),
+            font_size=dp(14),
+            bold=True
+        )
+        back_channels_btn.bind(on_press=self.go_back)
+        middle_row.add_widget(back_channels_btn)
 
         # Play/Pause button (for both Android and desktop with VLC)
         if platform == 'android' or VLC_AVAILABLE:
             self.play_pause_btn = Button(
                 text="Pause",
-                size_hint_x=0.5,
-                background_color=(0.3, 0.3, 0.3, 1),
+                size_hint_x=0.34,
+                background_color=(0.2, 0.6, 0.2, 1),
                 font_size=dp(16),
                 bold=True
             )
             self.play_pause_btn.bind(on_press=self.toggle_play_pause)
-            controls_layout.add_widget(self.play_pause_btn)
+            middle_row.add_widget(self.play_pause_btn)
 
-        self.controls_overlay.add_widget(controls_layout)
+        # Stop button
+        stop_btn = Button(
+            text="Stop",
+            size_hint_x=0.33,
+            background_color=(0.6, 0.2, 0.2, 1),
+            font_size=dp(14),
+            bold=True
+        )
+        stop_btn.bind(on_press=self.stop_playback)
+        middle_row.add_widget(stop_btn)
 
-        # Add status label
+        self.controls_overlay.add_widget(middle_row)
+
+        # Volume row (always show for both platforms)
+        volume_row = BoxLayout(size_hint_y=0.25, spacing=dp(10))
+
+        volume_label = Label(
+            text="Volume:",
+            size_hint_x=0.2,
+            font_size=dp(14),
+            color=(1, 1, 1, 1)
+        )
+        volume_row.add_widget(volume_label)
+
+        self.volume_slider = Slider(
+            min=0,
+            max=100,
+            value=50,
+            size_hint_x=0.6
+        )
+        self.volume_slider.bind(value=self.on_volume_change)
+        volume_row.add_widget(self.volume_slider)
+
+        self.volume_value_label = Label(
+            text="50%",
+            size_hint_x=0.2,
+            font_size=dp(14),
+            color=(1, 1, 1, 1)
+        )
+        volume_row.add_widget(self.volume_value_label)
+
+        self.controls_overlay.add_widget(volume_row)
+
+        # Status label
         self.status_label = Label(
             text="",
-            size_hint_y=0.3,
-            font_size=dp(14),
+            size_hint_y=0.2,
+            font_size=dp(12),
             color=(0.8, 0.8, 0.8, 1)
         )
         self.controls_overlay.add_widget(self.status_label)
@@ -201,9 +260,14 @@ class FullscreenScreen(Screen):
             # Start playback
             self.play_stream()
 
-            # Schedule auto-hide controls (only for Android)
+            # On desktop, keep controls visible
+            # On Android, schedule auto-hide controls
             if platform == 'android':
                 self.schedule_hide_controls()
+            else:
+                # Desktop: keep controls visible
+                self.controls_visible = True
+                self.controls_overlay.opacity = 1
 
     def play_stream(self):
         """Start playing the stream"""
@@ -217,6 +281,9 @@ class FullscreenScreen(Screen):
                 self.video_player.state = 'play'
                 if hasattr(self, 'play_pause_btn'):
                     self.play_pause_btn.text = "Pause"
+
+                # Set initial volume
+                self.video_player.volume = self.volume_slider.value / 100.0
 
                 self.status_label.text = "Loading stream..."
                 self.status_label.color = (0.8, 0.8, 0.8, 1)
@@ -283,6 +350,9 @@ class FullscreenScreen(Screen):
                         media = self.vlc_instance.media_new(self.channel.stream_url)
                         self.vlc_player.set_media(media)
                         self.vlc_player.play()
+
+                        # Set initial volume
+                        self.vlc_player.audio_set_volume(int(self.volume_slider.value))
 
                         self.status_label.text = "Playing embedded..."
                         self.status_label.color = (0.2, 1, 0.2, 1)
@@ -362,6 +432,34 @@ class FullscreenScreen(Screen):
         self.status_label.text = f"Playback error: {error}"
         self.status_label.color = (1, 0.2, 0.2, 1)
 
+    def stop_playback(self, instance):
+        """Stop playback completely"""
+        if platform == 'android' and self.video_player:
+            self.video_player.state = 'stop'
+            if hasattr(self, 'play_pause_btn'):
+                self.play_pause_btn.text = "Play"
+            self.status_label.text = "Stopped"
+        elif VLC_AVAILABLE and self.vlc_player and not self.use_external_vlc:
+            self.vlc_player.stop()
+            if hasattr(self, 'play_pause_btn'):
+                self.play_pause_btn.text = "Play"
+            self.status_label.text = "Stopped"
+
+    def on_volume_change(self, instance, value):
+        """Handle volume change"""
+        # Update volume label
+        self.volume_value_label.text = f"{int(value)}%"
+
+        # Apply volume to player
+        if platform == 'android' and self.video_player:
+            self.video_player.volume = value / 100.0
+        elif VLC_AVAILABLE and self.vlc_player and not self.use_external_vlc:
+            self.vlc_player.audio_set_volume(int(value))
+
+        # Reset hide timer on Android
+        if platform == 'android':
+            self.schedule_hide_controls()
+
     def toggle_play_pause(self, instance):
         """Toggle play/pause"""
         if platform == 'android' and self.video_player:
@@ -374,12 +472,14 @@ class FullscreenScreen(Screen):
                 self.play_pause_btn.text = "Pause"
                 self.status_label.text = "Playing..."
             self.schedule_hide_controls()
-        elif VLC_AVAILABLE and self.vlc_player:
+        elif VLC_AVAILABLE and self.vlc_player and not self.use_external_vlc:
             if self.vlc_player.is_playing():
                 self.vlc_player.pause()
+                self.play_pause_btn.text = "Play"
                 self.status_label.text = "Paused"
             else:
                 self.vlc_player.play()
+                self.play_pause_btn.text = "Pause"
                 self.status_label.text = "Playing..."
 
     def on_screen_touch(self, instance, touch):
