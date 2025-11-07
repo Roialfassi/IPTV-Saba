@@ -51,7 +51,7 @@ requirements = python3,kivy,pillow,requests,aiohttp,chardet,pyyaml,python-dateut
 
 # (str) Supported orientation (landscape, sensorLandscape, portrait, sensor)
 # sensor = auto-rotate based on device orientation
-orientation = sensor
+orientation = landscape
 
 # (list) List of service to declare
 #services = NAME:ENTRYPOINT_TO_PY,NAME2:ENTRYPOINT2_TO_PY
