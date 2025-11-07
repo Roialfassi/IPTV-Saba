@@ -23,7 +23,14 @@ from kivy.app import App
 from kivy.clock import Clock, mainthread
 
 from src.data.data_loader import DataLoader
-from src.android.download_record_manager import DownloadRecordManager
+
+# Optional: Download/Record manager (requires pyjnius)
+try:
+    from src.android.download_record_manager import DownloadRecordManager
+    DOWNLOAD_RECORD_AVAILABLE = True
+except ImportError:
+    DOWNLOAD_RECORD_AVAILABLE = False
+    DownloadRecordManager = None
 
 
 class LoadingPopup(Popup):
@@ -66,15 +73,17 @@ class ChannelScreen(Screen):
         self.selected_channel = None
         self.loading_popup = None
 
-        # Initialize download/record manager
-        self.download_manager = DownloadRecordManager()
+        # Initialize download/record manager (optional - requires pyjnius)
+        self.download_manager = None
         self.active_recording_id = None
 
-        # Bind to download/record events
-        self.download_manager.bind(on_download_complete=self.on_download_complete)
-        self.download_manager.bind(on_download_error=self.on_download_error)
-        self.download_manager.bind(on_recording_started=self.on_recording_started)
-        self.download_manager.bind(on_recording_stopped=self.on_recording_stopped)
+        if DOWNLOAD_RECORD_AVAILABLE:
+            self.download_manager = DownloadRecordManager()
+            # Bind to download/record events
+            self.download_manager.bind(on_download_complete=self.on_download_complete)
+            self.download_manager.bind(on_download_error=self.on_download_error)
+            self.download_manager.bind(on_recording_started=self.on_recording_started)
+            self.download_manager.bind(on_recording_stopped=self.on_recording_stopped)
 
         self.build_ui()
 
@@ -215,36 +224,39 @@ class ChannelScreen(Screen):
 
         main_layout.add_widget(bottom_layout_1)
 
-        # Bottom buttons - Row 2 (Download/Record)
-        bottom_layout_2 = BoxLayout(size_hint_y=0.08, spacing=dp(5))
+        # Bottom buttons - Row 2 (Download/Record) - only if pyjnius is available
+        if DOWNLOAD_RECORD_AVAILABLE:
+            bottom_layout_2 = BoxLayout(size_hint_y=0.08, spacing=dp(5))
 
-        download_btn = Button(
-            text="⬇ Download",
-            background_color=(0.2, 0.6, 0.2, 1),
-            font_size=dp(14),
-            bold=True
-        )
-        download_btn.bind(on_press=self.download_channel)
-        bottom_layout_2.add_widget(download_btn)
+            download_btn = Button(
+                text="Download",
+                background_color=(0.2, 0.6, 0.2, 1),
+                font_size=dp(14),
+                bold=True
+            )
+            download_btn.bind(on_press=self.download_channel)
+            bottom_layout_2.add_widget(download_btn)
 
-        self.record_btn = Button(
-            text="⏺ Record",
-            background_color=(0.8, 0.4, 0.0, 1),
-            font_size=dp(14),
-            bold=True
-        )
-        self.record_btn.bind(on_press=self.toggle_recording)
-        bottom_layout_2.add_widget(self.record_btn)
+            self.record_btn = Button(
+                text="Record",
+                background_color=(0.8, 0.4, 0.0, 1),
+                font_size=dp(14),
+                bold=True
+            )
+            self.record_btn.bind(on_press=self.toggle_recording)
+            bottom_layout_2.add_widget(self.record_btn)
 
-        downloads_list_btn = Button(
-            text="📁 Downloads",
-            background_color=(0.4, 0.4, 0.4, 1),
-            font_size=dp(14)
-        )
-        downloads_list_btn.bind(on_press=self.show_downloads)
-        bottom_layout_2.add_widget(downloads_list_btn)
+            downloads_list_btn = Button(
+                text="Downloads",
+                background_color=(0.4, 0.4, 0.4, 1),
+                font_size=dp(14)
+            )
+            downloads_list_btn.bind(on_press=self.show_downloads)
+            bottom_layout_2.add_widget(downloads_list_btn)
 
-        main_layout.add_widget(bottom_layout_2)
+            main_layout.add_widget(bottom_layout_2)
+        else:
+            self.record_btn = None  # Set to None if not available
 
         self.add_widget(main_layout)
 
@@ -568,8 +580,9 @@ class ChannelScreen(Screen):
         if self.active_recording_id:
             self.download_manager.stop_recording(self.active_recording_id)
             self.active_recording_id = None
-            self.record_btn.text = "⏺ Record"
-            self.record_btn.background_color = (0.8, 0.4, 0.0, 1)
+            if self.record_btn:
+                self.record_btn.text = "Record"
+                self.record_btn.background_color = (0.8, 0.4, 0.0, 1)
             return
 
         # Start recording
@@ -579,8 +592,9 @@ class ChannelScreen(Screen):
                 self.selected_channel.name
             )
 
-            self.record_btn.text = "⏹ Stop"
-            self.record_btn.background_color = (0.8, 0.2, 0.2, 1)
+            if self.record_btn:
+                self.record_btn.text = "Stop Recording"
+                self.record_btn.background_color = (0.8, 0.2, 0.2, 1)
 
         except Exception as e:
             error_popup = Popup(

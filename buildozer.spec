@@ -32,9 +32,9 @@ version = 1.0.0
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-# Note: Removed version pinning to avoid pyjnius/Python 3.11 compatibility issues
-# Buildozer will automatically use compatible versions
-requirements = python3,kivy,pillow,requests,aiohttp,chardet,pyyaml,python-dateutil,android,pyjnius,plyer
+# Note: Removed pyjnius and plyer - they cause build issues and are only needed for download/record features
+# Core requirements for basic app functionality: video playback, channel selection, profiles
+requirements = python3,kivy,pillow,requests,aiohttp,chardet,pyyaml,python-dateutil,android
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
