@@ -104,7 +104,14 @@ class AndroidController(EventDispatcher):
             List[Profile]: A list of Profile objects.
         """
         try:
-            profiles = self.profile_manager.list_profiles()
+            # ProfileManager.list_profiles() returns List[str] of profile names
+            # We need to fetch actual Profile objects
+            profile_names = self.profile_manager.list_profiles()
+            profiles = []
+            for name in profile_names:
+                profile = self.profile_manager.get_profile(name)
+                if profile:
+                    profiles.append(profile)
             return profiles
         except Exception as e:
             logger.error(f"Error listing profiles: {e}")
@@ -143,17 +150,11 @@ class AndroidController(EventDispatcher):
             bool: True if successful, False otherwise
         """
         try:
-            # Check if profile already exists
-            existing = self.profile_manager.get_profile(name)
-            if existing:
-                logger.error(f"Profile already exists: {name}")
-                return False
+            # Create new profile using ProfileManager.create_profile()
+            # This method handles validation, existence check, and saving
+            new_profile = self.profile_manager.create_profile(name, url)
 
-            # Create new profile
-            new_profile = Profile(name=name, url=url)
-            success = self.profile_manager.add_profile(new_profile)
-
-            if success:
+            if new_profile:
                 self.dispatch('on_profiles_updated')
                 logger.info(f"Profile created: {name}")
                 return True
