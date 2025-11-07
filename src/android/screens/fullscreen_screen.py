@@ -224,22 +224,69 @@ class FullscreenScreen(Screen):
             else:
                 # Desktop: Use embedded VLC player
                 if VLC_AVAILABLE and self.vlc_player:
-                    # Set window handle for VLC to render into
-                    import sys
-                    if sys.platform.startswith('linux'):
-                        self.vlc_player.set_xwindow(Window.get_window_info()[0])
-                    elif sys.platform == 'win32':
-                        self.vlc_player.set_hwnd(Window.get_window_info()[0])
-                    elif sys.platform == 'darwin':
-                        self.vlc_player.set_nsobject(Window.get_window_info()[0])
+                    try:
+                        # Get window handle based on platform
+                        import sys
 
-                    # Load and play media
-                    media = self.vlc_instance.media_new(self.channel.stream_url)
-                    self.vlc_player.set_media(media)
-                    self.vlc_player.play()
+                        # Try to get window handle
+                        if sys.platform.startswith('linux'):
+                            # Linux - try to get X window ID
+                            try:
+                                win_info = Window.get_window_info()
+                                if win_info and hasattr(win_info, 'window'):
+                                    self.vlc_player.set_xwindow(win_info.window)
+                                elif isinstance(win_info, dict) and 'window' in win_info:
+                                    self.vlc_player.set_xwindow(win_info['window'])
+                                else:
+                                    # Fallback: get from SDL
+                                    from ctypes import pythonapi, c_void_p
+                                    pythonapi.SDL_GetWindowWMInfo.restype = c_void_p
+                                    # Continue without setting window (will open in separate window)
+                            except Exception as e:
+                                self.status_label.text = f"Window handle error (Linux): {e}"
 
-                    self.status_label.text = "Playing..."
-                    self.status_label.color = (0.2, 1, 0.2, 1)
+                        elif sys.platform == 'win32':
+                            # Windows - try to get HWND
+                            try:
+                                win_info = Window.get_window_info()
+                                if win_info and hasattr(win_info, 'window'):
+                                    self.vlc_player.set_hwnd(win_info.window)
+                                elif isinstance(win_info, dict) and 'window' in win_info:
+                                    self.vlc_player.set_hwnd(win_info['window'])
+                                else:
+                                    # Fallback: Try using ctypes to get HWND
+                                    import ctypes
+                                    from ctypes import wintypes
+                                    user32 = ctypes.windll.user32
+                                    # Get window title and find window
+                                    hwnd = user32.FindWindowW(None, Window.get_title())
+                                    if hwnd:
+                                        self.vlc_player.set_hwnd(hwnd)
+                            except Exception as e:
+                                self.status_label.text = f"Window handle error (Windows): {e}"
+
+                        elif sys.platform == 'darwin':
+                            # macOS - try to get NSView
+                            try:
+                                win_info = Window.get_window_info()
+                                if win_info and hasattr(win_info, 'nsview'):
+                                    self.vlc_player.set_nsobject(win_info.nsview)
+                                elif isinstance(win_info, dict) and 'nsview' in win_info:
+                                    self.vlc_player.set_nsobject(win_info['nsview'])
+                            except Exception as e:
+                                self.status_label.text = f"Window handle error (macOS): {e}"
+
+                        # Load and play media
+                        media = self.vlc_instance.media_new(self.channel.stream_url)
+                        self.vlc_player.set_media(media)
+                        self.vlc_player.play()
+
+                        self.status_label.text = "Playing..."
+                        self.status_label.color = (0.2, 1, 0.2, 1)
+
+                    except Exception as e:
+                        self.status_label.text = f"VLC error: {str(e)}"
+                        self.status_label.color = (1, 0.2, 0.2, 1)
                 else:
                     self.status_label.text = "VLC not available"
                     self.status_label.color = (1, 0.2, 0.2, 1)
