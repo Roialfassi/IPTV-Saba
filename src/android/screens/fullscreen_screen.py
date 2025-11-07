@@ -1,11 +1,12 @@
 """
 Fullscreen Screen for IPTV-Saba Android
 Full-screen video player with touch controls
-Desktop: Embedded VLC player using python-vlc
+Desktop: Embedded VLC player using python-vlc (with external fallback)
 Android: Uses Kivy Video widget with native backend
 """
 
 import os
+import subprocess
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
@@ -45,6 +46,8 @@ class FullscreenScreen(Screen):
         self.vlc_instance = None
         self.vlc_player = None
         self.video_frame = None
+        self.vlc_process = None  # For external VLC fallback
+        self.use_external_vlc = False  # Flag for external VLC mode
 
         self.build_ui()
 
@@ -281,18 +284,72 @@ class FullscreenScreen(Screen):
                         self.vlc_player.set_media(media)
                         self.vlc_player.play()
 
-                        self.status_label.text = "Playing..."
+                        self.status_label.text = "Playing embedded..."
                         self.status_label.color = (0.2, 1, 0.2, 1)
 
                     except Exception as e:
-                        self.status_label.text = f"VLC error: {str(e)}"
-                        self.status_label.color = (1, 0.2, 0.2, 1)
+                        # Fallback to external VLC if embedding fails
+                        self.status_label.text = f"Embedding failed, opening external VLC..."
+                        self.status_label.color = (1, 1, 0.2, 1)
+                        self.open_external_vlc()
                 else:
-                    self.status_label.text = "VLC not available"
-                    self.status_label.color = (1, 0.2, 0.2, 1)
+                    # No python-vlc, try external VLC
+                    self.status_label.text = "Opening external VLC..."
+                    self.status_label.color = (1, 1, 0.2, 1)
+                    self.open_external_vlc()
 
         except Exception as e:
             self.status_label.text = f"Error: {str(e)}"
+            self.status_label.color = (1, 0.2, 0.2, 1)
+
+    def open_external_vlc(self):
+        """Open stream in external VLC player (fallback)"""
+        if not self.channel:
+            return
+
+        try:
+            import sys
+            stream_url = self.channel.stream_url
+
+            if sys.platform == 'win32':
+                # Try common VLC installation paths on Windows
+                vlc_paths = [
+                    r'C:\Program Files\VideoLAN\VLC\vlc.exe',
+                    r'C:\Program Files (x86)\VideoLAN\VLC\vlc.exe',
+                ]
+                vlc_exe = None
+                for path in vlc_paths:
+                    if os.path.exists(path):
+                        vlc_exe = path
+                        break
+
+                if vlc_exe:
+                    self.vlc_process = subprocess.Popen([vlc_exe, stream_url])
+                else:
+                    # Try to open with default handler
+                    self.vlc_process = subprocess.Popen(['vlc', stream_url], shell=True)
+
+                self.use_external_vlc = True
+                self.status_label.text = "Playing in external VLC"
+                self.status_label.color = (0.2, 1, 0.2, 1)
+
+            elif sys.platform.startswith('linux'):
+                self.vlc_process = subprocess.Popen(['vlc', stream_url])
+                self.use_external_vlc = True
+                self.status_label.text = "Playing in external VLC"
+                self.status_label.color = (0.2, 1, 0.2, 1)
+
+            elif sys.platform == 'darwin':
+                self.vlc_process = subprocess.Popen(['open', '-a', 'VLC', stream_url])
+                self.use_external_vlc = True
+                self.status_label.text = "Playing in external VLC"
+                self.status_label.color = (0.2, 1, 0.2, 1)
+
+        except FileNotFoundError:
+            self.status_label.text = "VLC not found. Please install VLC."
+            self.status_label.color = (1, 0.2, 0.2, 1)
+        except Exception as e:
+            self.status_label.text = f"Error opening VLC: {str(e)}"
             self.status_label.color = (1, 0.2, 0.2, 1)
 
     def _on_video_load(self, instance):
@@ -368,9 +425,15 @@ class FullscreenScreen(Screen):
         if platform == 'android' and self.video_player:
             self.video_player.state = 'stop'
             self.video_player.source = ''
-        elif VLC_AVAILABLE and self.vlc_player:
-            # Stop VLC player on desktop
+        elif VLC_AVAILABLE and self.vlc_player and not self.use_external_vlc:
+            # Stop embedded VLC player on desktop
             self.vlc_player.stop()
+        elif self.vlc_process:
+            # Terminate external VLC process
+            try:
+                self.vlc_process.terminate()
+            except:
+                pass
 
         # Cancel hide timer
         if self.hide_timer:
@@ -385,9 +448,15 @@ class FullscreenScreen(Screen):
         if platform == 'android' and self.video_player:
             self.video_player.state = 'stop'
             self.video_player.source = ''
-        elif VLC_AVAILABLE and self.vlc_player:
-            # Stop VLC player on desktop
+        elif VLC_AVAILABLE and self.vlc_player and not self.use_external_vlc:
+            # Stop embedded VLC player on desktop
             self.vlc_player.stop()
+        elif self.vlc_process:
+            # Terminate external VLC process
+            try:
+                self.vlc_process.terminate()
+            except:
+                pass
 
         # Cancel hide timer
         if self.hide_timer:
