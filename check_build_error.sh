@@ -4,11 +4,22 @@
 echo "=== Buildozer Build Error Diagnostic ==="
 echo ""
 
-# Find the most recent build directory
-BUILD_DIR=$(find ~/.buildozer/android/platform/ -type d -name "build-*" 2>/dev/null | head -1)
+# Find the correct python-for-android build directory
+# Look for directories with 'build' in the name but exclude NDK build directories
+BUILD_DIR=$(find ~/.buildozer/android/platform/ -type d -path "*/python-for-android/build/*" -o -path "*/build-arm*" | grep -v "ndk" | grep -v "vulkan" | head -1)
+
+# If not found, try alternative locations
+if [ -z "$BUILD_DIR" ]; then
+    BUILD_DIR=$(find ./.buildozer/android/platform/ -type d -name "build-arm*" 2>/dev/null | head -1)
+fi
 
 if [ -z "$BUILD_DIR" ]; then
     echo "No build directory found. Have you run buildozer yet?"
+    echo "Checking for any .buildozer directory..."
+    if [ -d ".buildozer" ] || [ -d "$HOME/.buildozer" ]; then
+        echo "Buildozer directory exists. Listing structure:"
+        find ./.buildozer ~/.buildozer -maxdepth 4 -type d 2>/dev/null | head -20
+    fi
     exit 1
 fi
 

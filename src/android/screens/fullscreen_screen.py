@@ -1,12 +1,11 @@
 """
 Fullscreen Screen for IPTV-Saba Android
 Full-screen video player with touch controls
-Desktop: Opens stream in external VLC player
+Desktop: Embedded VLC player using python-vlc
 Android: Uses Kivy Video widget with native backend
 """
 
-import subprocess
-import platform as platform_module
+import os
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
@@ -20,6 +19,16 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.utils import platform
 
+# Desktop VLC player
+if platform != 'android':
+    try:
+        import vlc
+        VLC_AVAILABLE = True
+    except ImportError:
+        VLC_AVAILABLE = False
+else:
+    VLC_AVAILABLE = False
+
 
 class FullscreenScreen(Screen):
     """Fullscreen video player with auto-hiding controls"""
@@ -31,7 +40,11 @@ class FullscreenScreen(Screen):
         self.video_player = None
         self.controls_visible = True
         self.hide_timer = None
-        self.vlc_process = None  # For desktop VLC process
+
+        # Desktop VLC player
+        self.vlc_instance = None
+        self.vlc_player = None
+        self.video_frame = None
 
         self.build_ui()
 
@@ -46,7 +59,7 @@ class FullscreenScreen(Screen):
             self.bg_rect = Rectangle(size=main_layout.size, pos=main_layout.pos)
         main_layout.bind(size=self._update_bg, pos=self._update_bg)
 
-        # Only add video widget on Android
+        # Video widget - platform specific
         if platform == 'android':
             from kivy.uix.video import Video
             # Video player (full screen)
@@ -58,16 +71,30 @@ class FullscreenScreen(Screen):
             )
             main_layout.add_widget(self.video_player)
         else:
-            # Desktop: Show message that VLC is opening externally
-            self.desktop_label = Label(
-                text="Opening stream in VLC player...\n\nIf VLC doesn't open, please install VLC media player.",
-                size_hint=(0.8, 0.3),
-                pos_hint={'center_x': 0.5, 'center_y': 0.5},
-                font_size=dp(16),
-                halign='center',
-                color=(1, 1, 1, 1)
-            )
-            main_layout.add_widget(self.desktop_label)
+            # Desktop: Create placeholder for VLC or show message if not available
+            if VLC_AVAILABLE:
+                # Initialize VLC
+                self.vlc_instance = vlc.Instance('--no-xlib')  # No xlib for better Kivy compatibility
+                self.vlc_player = self.vlc_instance.media_player_new()
+
+                # Create a dummy widget for video area
+                from kivy.uix.widget import Widget
+                self.video_frame = Widget(
+                    size_hint=(1, 1),
+                    pos_hint={'x': 0, 'y': 0}
+                )
+                main_layout.add_widget(self.video_frame)
+            else:
+                # VLC not available
+                self.desktop_label = Label(
+                    text="VLC library not found.\n\nPlease install python-vlc:\npip install python-vlc",
+                    size_hint=(0.8, 0.3),
+                    pos_hint={'center_x': 0.5, 'center_y': 0.5},
+                    font_size=dp(16),
+                    halign='center',
+                    color=(1, 1, 1, 1)
+                )
+                main_layout.add_widget(self.desktop_label)
 
         # Controls overlay container
         self.controls_overlay = BoxLayout(
@@ -115,8 +142,8 @@ class FullscreenScreen(Screen):
         back_btn.bind(on_press=self.go_back)
         controls_layout.add_widget(back_btn)
 
-        # Play/Pause button (only on Android)
-        if platform == 'android':
+        # Play/Pause button (for both Android and desktop with VLC)
+        if platform == 'android' or VLC_AVAILABLE:
             self.play_pause_btn = Button(
                 text="Pause",
                 size_hint_x=0.5,
@@ -185,7 +212,8 @@ class FullscreenScreen(Screen):
                 # Android: Use Kivy Video widget
                 self.video_player.source = self.channel.stream_url
                 self.video_player.state = 'play'
-                self.play_pause_btn.text = "Pause"
+                if hasattr(self, 'play_pause_btn'):
+                    self.play_pause_btn.text = "Pause"
 
                 self.status_label.text = "Loading stream..."
                 self.status_label.color = (0.8, 0.8, 0.8, 1)
@@ -194,57 +222,30 @@ class FullscreenScreen(Screen):
                 self.video_player.bind(on_load=self._on_video_load)
                 self.video_player.bind(on_error=self._on_video_error)
             else:
-                # Desktop: Open in external VLC player
-                self.open_in_vlc()
+                # Desktop: Use embedded VLC player
+                if VLC_AVAILABLE and self.vlc_player:
+                    # Set window handle for VLC to render into
+                    import sys
+                    if sys.platform.startswith('linux'):
+                        self.vlc_player.set_xwindow(Window.get_window_info()[0])
+                    elif sys.platform == 'win32':
+                        self.vlc_player.set_hwnd(Window.get_window_info()[0])
+                    elif sys.platform == 'darwin':
+                        self.vlc_player.set_nsobject(Window.get_window_info()[0])
+
+                    # Load and play media
+                    media = self.vlc_instance.media_new(self.channel.stream_url)
+                    self.vlc_player.set_media(media)
+                    self.vlc_player.play()
+
+                    self.status_label.text = "Playing..."
+                    self.status_label.color = (0.2, 1, 0.2, 1)
+                else:
+                    self.status_label.text = "VLC not available"
+                    self.status_label.color = (1, 0.2, 0.2, 1)
 
         except Exception as e:
             self.status_label.text = f"Error: {str(e)}"
-            self.status_label.color = (1, 0.2, 0.2, 1)
-
-    def open_in_vlc(self):
-        """Open stream in external VLC player (desktop only)"""
-        try:
-            stream_url = self.channel.stream_url
-            system = platform_module.system()
-
-            if system == 'Windows':
-                # Try common VLC installation paths on Windows
-                vlc_paths = [
-                    r'C:\Program Files\VideoLAN\VLC\vlc.exe',
-                    r'C:\Program Files (x86)\VideoLAN\VLC\vlc.exe',
-                ]
-                vlc_exe = None
-                for path in vlc_paths:
-                    import os
-                    if os.path.exists(path):
-                        vlc_exe = path
-                        break
-
-                if vlc_exe:
-                    self.vlc_process = subprocess.Popen([vlc_exe, stream_url])
-                    self.status_label.text = "Playing in VLC..."
-                    self.status_label.color = (0.2, 1, 0.2, 1)
-                else:
-                    # Try to open with default handler
-                    self.vlc_process = subprocess.Popen(['vlc', stream_url], shell=True)
-                    self.status_label.text = "Playing in VLC..."
-                    self.status_label.color = (0.2, 1, 0.2, 1)
-
-            elif system == 'Linux':
-                self.vlc_process = subprocess.Popen(['vlc', stream_url])
-                self.status_label.text = "Playing in VLC..."
-                self.status_label.color = (0.2, 1, 0.2, 1)
-
-            elif system == 'Darwin':  # macOS
-                self.vlc_process = subprocess.Popen(['open', '-a', 'VLC', stream_url])
-                self.status_label.text = "Playing in VLC..."
-                self.status_label.color = (0.2, 1, 0.2, 1)
-
-        except FileNotFoundError:
-            self.status_label.text = "VLC not found. Please install VLC media player."
-            self.status_label.color = (1, 0.2, 0.2, 1)
-        except Exception as e:
-            self.status_label.text = f"Error opening VLC: {str(e)}"
             self.status_label.color = (1, 0.2, 0.2, 1)
 
     def _on_video_load(self, instance):
@@ -258,21 +259,24 @@ class FullscreenScreen(Screen):
         self.status_label.color = (1, 0.2, 0.2, 1)
 
     def toggle_play_pause(self, instance):
-        """Toggle play/pause (Android only)"""
-        if not self.video_player:
-            return
-
-        if self.video_player.state == 'play':
-            self.video_player.state = 'pause'
-            self.play_pause_btn.text = "Play"
-            self.status_label.text = "Paused"
-        else:
-            self.video_player.state = 'play'
-            self.play_pause_btn.text = "Pause"
-            self.status_label.text = "Playing..."
-
-        # Reset hide timer
-        self.schedule_hide_controls()
+        """Toggle play/pause"""
+        if platform == 'android' and self.video_player:
+            if self.video_player.state == 'play':
+                self.video_player.state = 'pause'
+                self.play_pause_btn.text = "Play"
+                self.status_label.text = "Paused"
+            else:
+                self.video_player.state = 'play'
+                self.play_pause_btn.text = "Pause"
+                self.status_label.text = "Playing..."
+            self.schedule_hide_controls()
+        elif VLC_AVAILABLE and self.vlc_player:
+            if self.vlc_player.is_playing():
+                self.vlc_player.pause()
+                self.status_label.text = "Paused"
+            else:
+                self.vlc_player.play()
+                self.status_label.text = "Playing..."
 
     def on_screen_touch(self, instance, touch):
         """Handle screen touch to show/hide controls"""
@@ -317,12 +321,9 @@ class FullscreenScreen(Screen):
         if platform == 'android' and self.video_player:
             self.video_player.state = 'stop'
             self.video_player.source = ''
-        elif self.vlc_process:
-            # Terminate VLC process on desktop
-            try:
-                self.vlc_process.terminate()
-            except:
-                pass
+        elif VLC_AVAILABLE and self.vlc_player:
+            # Stop VLC player on desktop
+            self.vlc_player.stop()
 
         # Cancel hide timer
         if self.hide_timer:
@@ -337,12 +338,9 @@ class FullscreenScreen(Screen):
         if platform == 'android' and self.video_player:
             self.video_player.state = 'stop'
             self.video_player.source = ''
-        elif self.vlc_process:
-            # Terminate VLC process on desktop
-            try:
-                self.vlc_process.terminate()
-            except:
-                pass
+        elif VLC_AVAILABLE and self.vlc_player:
+            # Stop VLC player on desktop
+            self.vlc_player.stop()
 
         # Cancel hide timer
         if self.hide_timer:

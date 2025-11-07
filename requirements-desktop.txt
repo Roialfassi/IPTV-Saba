@@ -1,0 +1,17 @@
+# Desktop requirements for IPTV-Saba
+# For Android, buildozer.spec handles requirements
+
+# Core dependencies
+kivy==2.3.0
+pillow
+requests
+aiohttp
+chardet
+pyyaml
+python-dateutil
+
+# Desktop video playback
+python-vlc
+
+# Desktop-only (not needed on Android)
+PyQt5  # Original desktop app
