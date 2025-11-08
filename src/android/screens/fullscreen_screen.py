@@ -36,70 +36,57 @@ class FullscreenScreen(Screen):
         self.build_ui()
 
     def build_ui(self):
-        """Build the fullscreen UI"""
-        # Main layout (FloatLayout for overlay controls)
-        main_layout = FloatLayout()
+        """Build the fullscreen UI with side-by-side layout"""
+        # Main horizontal layout: [Video Player] [Control Panel]
+        main_layout = BoxLayout(orientation='horizontal', spacing=0)
 
-        # Set background to black
-        with main_layout.canvas.before:
+        # ========== VIDEO PLAYER SECTION ==========
+        # Video container with black background (takes remaining space)
+        self.video_container = FloatLayout()
+
+        # Black background for video
+        with self.video_container.canvas.before:
             Color(0, 0, 0, 1)
-            self.bg_rect = Rectangle(size=main_layout.size, pos=main_layout.pos)
-        main_layout.bind(size=self._update_bg, pos=self._update_bg)
+            self.video_bg = Rectangle(size=self.video_container.size, pos=self.video_container.pos)
+        self.video_container.bind(size=self._update_video_bg, pos=self._update_video_bg)
 
-        # ========== VIDEO PLAYER (Kivy Video Widget) ==========
-        # Use Kivy Video widget for both Android AND Desktop
-        # This ensures overlays work perfectly (no VLC z-order issues)
-
-        # Container for video with black background
-        video_container = FloatLayout(
-            size_hint=(1, 1),
-            pos_hint={'x': 0, 'y': 0}
-        )
-
-        # Black background for video container
-        with video_container.canvas.before:
-            Color(0, 0, 0, 1)
-            self.video_bg = Rectangle(size=video_container.size, pos=video_container.pos)
-        video_container.bind(size=self._update_video_bg, pos=self._update_video_bg)
-
+        # Video player widget
         self.video_player = Video(
             state='stop',
             options={'eos': 'loop'},
             size_hint=(1, 1),
-            pos_hint={'x': 0, 'y': 0},
-            allow_stretch=True,  # Stretch video to fill container
-            keep_ratio=True      # Keep aspect ratio
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            allow_stretch=True,
+            keep_ratio=True
         )
+        self.video_container.add_widget(self.video_player)
 
-        video_container.add_widget(self.video_player)
-        main_layout.add_widget(video_container)
-
-        # ========== COLLAPSIBLE CONTROL PANEL ==========
-        # Small toggle button always visible, slides in full controls when clicked
-
-        # Toggle button (always visible in top-right corner)
+        # Toggle button overlay on video (top-right corner)
         self.toggle_button = Button(
             text="☰",  # Menu icon
             size_hint=(None, None),
             size=(dp(50), dp(50)),
             pos_hint={'right': 1, 'top': 1},
-            background_color=(0.898, 0.035, 0.078, 0.9),  # Netflix red, semi-transparent
+            background_color=(0.898, 0.035, 0.078, 0.9),  # Netflix red
             font_size=dp(24),
             bold=True
         )
         self.toggle_button.bind(on_press=self.toggle_controls)
-        main_layout.add_widget(self.toggle_button)
+        self.video_container.add_widget(self.toggle_button)
 
-        # Collapsible control panel (slides in from right)
-        self.controls_panel = FloatLayout(
+        main_layout.add_widget(self.video_container)
+
+        # ========== COLLAPSIBLE CONTROL PANEL ==========
+        # Panel that starts hidden (width=0) and expands to 300dp when opened
+        self.controls_panel = BoxLayout(
+            orientation='vertical',
             size_hint=(None, 1),
-            width=dp(300),  # Panel width
-            pos_hint={'right': 0, 'y': 0}  # Start off-screen to the right
+            width=0  # Start collapsed (width=0)
         )
 
         # Panel background
         with self.controls_panel.canvas.before:
-            Color(0.1, 0.1, 0.1, 0.95)  # Dark semi-transparent
+            Color(0.1, 0.1, 0.1, 1)  # Dark background
             self.panel_bg = Rectangle(
                 size=self.controls_panel.size,
                 pos=self.controls_panel.pos
@@ -114,9 +101,9 @@ class FullscreenScreen(Screen):
             orientation='vertical',
             padding=dp(20),
             spacing=dp(15),
-            size_hint=(1, None),
+            size_hint_y=None,
             height=dp(500),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+            pos_hint={'center_y': 0.5}
         )
 
         # Channel name header
@@ -226,21 +213,18 @@ class FullscreenScreen(Screen):
         )
         controls_container.add_widget(self.status_label)
 
-        # Add controls to panel
-        self.controls_panel.add_widget(controls_container)
+        # Add controls to panel (centered)
+        panel_wrapper = FloatLayout()
+        panel_wrapper.add_widget(controls_container)
+        self.controls_panel.add_widget(panel_wrapper)
 
-        # Add panel to main layout (starts hidden off-screen)
+        # Add panel to main layout (starts hidden with width=0)
         main_layout.add_widget(self.controls_panel)
 
         # Track panel state
         self.controls_visible = False
 
         self.add_widget(main_layout)
-
-    def _update_bg(self, instance, value):
-        """Update background rectangle"""
-        self.bg_rect.size = instance.size
-        self.bg_rect.pos = instance.pos
 
     def _update_video_bg(self, instance, value):
         """Update video container background rectangle"""
@@ -253,18 +237,18 @@ class FullscreenScreen(Screen):
         self.panel_bg.pos = instance.pos
 
     def toggle_controls(self, instance):
-        """Toggle slide-in control panel"""
+        """Toggle control panel - video resizes automatically"""
         from kivy.animation import Animation
 
         if self.controls_visible:
-            # Slide out (hide panel)
-            anim = Animation(pos_hint={'right': 0, 'y': 0}, duration=0.3, t='out_quad')
+            # Collapse panel (width → 0, video expands to full screen)
+            anim = Animation(width=0, duration=0.3, t='out_quad')
             anim.start(self.controls_panel)
             self.toggle_button.text = "☰"  # Menu icon
             self.controls_visible = False
         else:
-            # Slide in (show panel)
-            anim = Animation(pos_hint={'right': 1, 'y': 0}, duration=0.3, t='out_quad')
+            # Expand panel (width → 300dp, video shrinks to make room)
+            anim = Animation(width=dp(300), duration=0.3, t='out_quad')
             anim.start(self.controls_panel)
             self.toggle_button.text = "✕"  # Close icon
             self.controls_visible = True
