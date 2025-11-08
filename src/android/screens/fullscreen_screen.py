@@ -76,33 +76,43 @@ class FullscreenScreen(Screen):
         else:
             # Desktop: Create placeholder for VLC or show message if not available
             if VLC_AVAILABLE:
-                # Initialize VLC with options that allow overlays to work
-                vlc_args = [
-                    '--no-xlib',  # No xlib for better Kivy compatibility
-                    '--no-video-title-show',  # Don't show title
-                    '--no-overlay',  # CRITICAL: Disable hardware overlay so Kivy widgets appear on top
-                    '--video-on-top=0',  # Don't force video window on top
-                    '--sub-source=marq',  # Enable marquee filter for channel name overlay
-                    '--marq-position=8',  # Bottom center
-                    '--marq-size=18',  # Font size
-                    '--marq-color=0xFFFFFF',  # White text
-                    '--marq-opacity=200',  # Semi-transparent
-                ]
-
+                # Initialize VLC with minimal compatible options
+                # Avoid deprecated/removed options that cause errors
                 import sys
-                if sys.platform == 'win32':
-                    # Windows-specific: use DirectDraw instead of Direct3D to avoid overlay issues
-                    vlc_args.extend([
-                        '--vout=directdraw',  # Use DirectDraw (not Direct3D)
-                        '--no-directx-hw-yuv',  # Disable DirectX hardware YUV overlay
-                    ])
-                elif sys.platform.startswith('linux'):
-                    vlc_args.extend([
-                        '--vout=xcb_x11',  # Use X11 output
-                    ])
 
-                self.vlc_instance = vlc.Instance(' '.join(vlc_args))
-                self.vlc_player = self.vlc_instance.media_player_new()
+                # Start with minimal args
+                vlc_args = ['--no-xlib']  # Basic Kivy compatibility
+
+                # Try to create VLC instance with error handling
+                try:
+                    self.vlc_instance = vlc.Instance(' '.join(vlc_args))
+
+                    # Check if instance was created successfully
+                    if not self.vlc_instance:
+                        print("Warning: VLC instance returned None, trying fallback...")
+                        self.vlc_instance = vlc.Instance()  # Fallback: no args
+
+                    # Create media player if instance is valid
+                    if self.vlc_instance:
+                        self.vlc_player = self.vlc_instance.media_player_new()
+                    else:
+                        print("Error: Could not create VLC instance")
+                        self.vlc_player = None
+
+                except Exception as e:
+                    print(f"Warning: VLC initialization failed with args: {e}")
+                    # Fallback: try with no arguments at all
+                    try:
+                        print("Trying VLC with default arguments...")
+                        self.vlc_instance = vlc.Instance()
+                        if self.vlc_instance:
+                            self.vlc_player = self.vlc_instance.media_player_new()
+                        else:
+                            self.vlc_player = None
+                    except Exception as e2:
+                        print(f"Error: VLC fallback also failed: {e2}")
+                        self.vlc_instance = None
+                        self.vlc_player = None
 
                 # Create a dummy widget for video area
                 from kivy.uix.widget import Widget
@@ -375,16 +385,8 @@ class FullscreenScreen(Screen):
                         self.vlc_player.set_media(media)
                         self.vlc_player.play()
 
-                        # CRITICAL: Set channel name in VLC's marquee overlay
-                        # This appears ON TOP of the video, solving the z-order issue
-                        try:
-                            self.vlc_player.video_set_marquee_string(
-                                vlc.VideoMarqueeOption.Text,
-                                f"📺 {self.channel.name}"
-                            )
-                        except Exception as e:
-                            # Marquee might not be available in some VLC versions
-                            pass
+                        # Note: VLC marquee overlay disabled for compatibility
+                        # (requires --sub-source=marq which may not be available in all VLC versions)
 
                         # Set initial volume
                         self.vlc_player.audio_set_volume(int(self.volume_slider.value))
