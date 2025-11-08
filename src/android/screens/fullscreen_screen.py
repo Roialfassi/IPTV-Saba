@@ -39,8 +39,7 @@ class FullscreenScreen(Screen):
         self.controller = controller
         self.channel = None
         self.video_player = None
-        self.controls_visible = True
-        self.hide_timer = None
+        self.controls_visible = False  # Panel starts collapsed
 
         # Desktop VLC player
         self.vlc_instance = None
@@ -133,150 +132,197 @@ class FullscreenScreen(Screen):
                 )
                 main_layout.add_widget(self.desktop_label)
 
-        # Controls overlay container - increased height for more controls
-        self.controls_overlay = BoxLayout(
-            orientation='vertical',
-            size_hint=(1, None),
-            height=dp(200),
-            pos_hint={'x': 0, 'bottom': 1},
-            padding=dp(15),
-            spacing=dp(10)
+        # ========== COLLAPSIBLE CONTROL PANEL ==========
+        # Small toggle button always visible, slides in full controls when clicked
+
+        # Toggle button (always visible in top-right corner)
+        self.toggle_button = Button(
+            text="☰",  # Menu icon
+            size_hint=(None, None),
+            size=(dp(50), dp(50)),
+            pos_hint={'right': 1, 'top': 1},
+            background_color=(0.898, 0.035, 0.078, 0.9),  # Netflix red, semi-transparent
+            font_size=dp(24),
+            bold=True
+        )
+        self.toggle_button.bind(on_press=self.toggle_controls)
+        main_layout.add_widget(self.toggle_button)
+
+        # Collapsible control panel (slides in from right)
+        self.controls_panel = FloatLayout(
+            size_hint=(None, 1),
+            width=dp(300),  # Panel width
+            pos_hint={'right': 0, 'y': 0}  # Start off-screen to the right
         )
 
-        # Set semi-transparent background for controls
-        with self.controls_overlay.canvas.before:
-            Color(0, 0, 0, 0.8)
-            self.controls_bg = Rectangle(
-                size=self.controls_overlay.size,
-                pos=self.controls_overlay.pos
+        # Panel background
+        with self.controls_panel.canvas.before:
+            Color(0.1, 0.1, 0.1, 0.95)  # Dark semi-transparent
+            self.panel_bg = Rectangle(
+                size=self.controls_panel.size,
+                pos=self.controls_panel.pos
             )
-        self.controls_overlay.bind(
-            size=self._update_controls_bg,
-            pos=self._update_controls_bg
+        self.controls_panel.bind(
+            size=self._update_panel_bg,
+            pos=self._update_panel_bg
         )
 
-        # Top row: Channel info and close button
-        top_row = BoxLayout(size_hint_y=0.25, spacing=dp(10))
+        # Container for controls inside panel
+        controls_container = BoxLayout(
+            orientation='vertical',
+            padding=dp(20),
+            spacing=dp(15),
+            size_hint=(1, None),
+            height=dp(500),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
 
+        # Channel name header
         self.channel_label = Label(
-            text="",
-            size_hint_x=0.8,
-            font_size=dp(18),
+            text="No Channel",
+            size_hint_y=None,
+            height=dp(40),
+            font_size=dp(20),
             bold=True,
             color=(1, 1, 1, 1),
-            halign='left',
+            halign='center',
             valign='middle'
         )
         self.channel_label.bind(size=self.channel_label.setter('text_size'))
-        top_row.add_widget(self.channel_label)
+        controls_container.add_widget(self.channel_label)
 
-        # Close/Back button (always visible)
+        # Separator line
+        separator1 = Label(
+            text="─" * 20,
+            size_hint_y=None,
+            height=dp(10),
+            color=(0.5, 0.5, 0.5, 1)
+        )
+        controls_container.add_widget(separator1)
+
+        # Close button
         close_btn = Button(
-            text="X",
-            size_hint_x=0.2,
+            text="✕ Close Player",
+            size_hint_y=None,
+            height=dp(50),
             background_color=(0.898, 0.035, 0.078, 1),
-            font_size=dp(20),
+            font_size=dp(16),
             bold=True
         )
         close_btn.bind(on_press=self.go_back)
-        top_row.add_widget(close_btn)
+        controls_container.add_widget(close_btn)
 
-        self.controls_overlay.add_widget(top_row)
-
-        # Middle row: Play/Pause and navigation buttons
-        middle_row = BoxLayout(size_hint_y=0.3, spacing=dp(10))
-
-        # Back to channels button
-        back_channels_btn = Button(
-            text="< Channels",
-            size_hint_x=0.33,
-            background_color=(0.3, 0.3, 0.3, 1),
-            font_size=dp(14),
-            bold=True
-        )
-        back_channels_btn.bind(on_press=self.go_back)
-        middle_row.add_widget(back_channels_btn)
-
-        # Play/Pause button (for both Android and desktop with VLC)
+        # Play/Pause button
         if platform == 'android' or VLC_AVAILABLE:
             self.play_pause_btn = Button(
-                text="Pause",
-                size_hint_x=0.34,
+                text="⏸ Pause",
+                size_hint_y=None,
+                height=dp(50),
                 background_color=(0.2, 0.6, 0.2, 1),
                 font_size=dp(16),
                 bold=True
             )
             self.play_pause_btn.bind(on_press=self.toggle_play_pause)
-            middle_row.add_widget(self.play_pause_btn)
+            controls_container.add_widget(self.play_pause_btn)
 
         # Stop button
-        stop_btn = Button(
-            text="Stop",
-            size_hint_x=0.33,
-            background_color=(0.6, 0.2, 0.2, 1),
-            font_size=dp(14),
-            bold=True
-        )
-        stop_btn.bind(on_press=self.stop_playback)
-        middle_row.add_widget(stop_btn)
+        if platform == 'android' or VLC_AVAILABLE:
+            stop_btn = Button(
+                text="⏹ Stop",
+                size_hint_y=None,
+                height=dp(50),
+                background_color=(0.6, 0.2, 0.2, 1),
+                font_size=dp(16)
+            )
+            stop_btn.bind(on_press=self.stop_playback)
+            controls_container.add_widget(stop_btn)
 
-        self.controls_overlay.add_widget(middle_row)
-
-        # Volume row (always show for both platforms)
-        volume_row = BoxLayout(size_hint_y=0.25, spacing=dp(10))
-
+        # Volume control section
         volume_label = Label(
-            text="Volume:",
-            size_hint_x=0.2,
+            text="🔊 Volume",
+            size_hint_y=None,
+            height=dp(30),
             font_size=dp(14),
-            color=(1, 1, 1, 1)
+            color=(0.9, 0.9, 0.9, 1)
         )
-        volume_row.add_widget(volume_label)
+        controls_container.add_widget(volume_label)
+
+        volume_box = BoxLayout(
+            orientation='horizontal',
+            size_hint_y=None,
+            height=dp(40),
+            spacing=dp(10)
+        )
 
         self.volume_slider = Slider(
             min=0,
             max=100,
             value=50,
-            size_hint_x=0.6
+            size_hint_x=0.75
         )
         self.volume_slider.bind(value=self.on_volume_change)
-        volume_row.add_widget(self.volume_slider)
+        volume_box.add_widget(self.volume_slider)
 
         self.volume_value_label = Label(
             text="50%",
-            size_hint_x=0.2,
+            size_hint_x=0.25,
             font_size=dp(14),
             color=(1, 1, 1, 1)
         )
-        volume_row.add_widget(self.volume_value_label)
+        volume_box.add_widget(self.volume_value_label)
 
-        self.controls_overlay.add_widget(volume_row)
+        controls_container.add_widget(volume_box)
 
         # Status label
         self.status_label = Label(
-            text="",
-            size_hint_y=0.2,
+            text="Ready",
+            size_hint_y=None,
+            height=dp(60),
             font_size=dp(12),
-            color=(0.8, 0.8, 0.8, 1)
+            color=(0.7, 0.7, 0.7, 1),
+            halign='center',
+            valign='middle',
+            text_size=(dp(260), None)
         )
-        self.controls_overlay.add_widget(self.status_label)
+        controls_container.add_widget(self.status_label)
 
-        main_layout.add_widget(self.controls_overlay)
+        # Add controls to panel
+        self.controls_panel.add_widget(controls_container)
+
+        # Add panel to main layout (starts hidden off-screen)
+        main_layout.add_widget(self.controls_panel)
+
+        # Track panel state
+        self.controls_visible = False
 
         self.add_widget(main_layout)
-
-        # Bind touch event for showing/hiding controls
-        self.bind(on_touch_down=self.on_screen_touch)
 
     def _update_bg(self, instance, value):
         """Update background rectangle"""
         self.bg_rect.size = instance.size
         self.bg_rect.pos = instance.pos
 
-    def _update_controls_bg(self, instance, value):
-        """Update controls background rectangle"""
-        self.controls_bg.size = instance.size
-        self.controls_bg.pos = instance.pos
+    def _update_panel_bg(self, instance, value):
+        """Update panel background rectangle"""
+        self.panel_bg.size = instance.size
+        self.panel_bg.pos = instance.pos
+
+    def toggle_controls(self, instance):
+        """Toggle slide-in control panel"""
+        from kivy.animation import Animation
+
+        if self.controls_visible:
+            # Slide out (hide panel)
+            anim = Animation(pos_hint={'right': 0, 'y': 0}, duration=0.3, t='out_quad')
+            anim.start(self.controls_panel)
+            self.toggle_button.text = "☰"  # Menu icon
+            self.controls_visible = False
+        else:
+            # Slide in (show panel)
+            anim = Animation(pos_hint={'right': 1, 'y': 0}, duration=0.3, t='out_quad')
+            anim.start(self.controls_panel)
+            self.toggle_button.text = "✕"  # Close icon
+            self.controls_visible = True
 
     def set_channel(self, channel):
         """Set the channel to play"""
@@ -294,14 +340,8 @@ class FullscreenScreen(Screen):
             # Start playback
             self.play_stream()
 
-            # On desktop, keep controls visible
-            # On Android, schedule auto-hide controls
-            if platform == 'android':
-                self.schedule_hide_controls()
-            else:
-                # Desktop: keep controls visible
-                self.controls_visible = True
-                self.controls_overlay.opacity = 1
+            # Panel starts collapsed on both platforms
+            # User can click toggle button to open
 
     def play_stream(self):
         """Start playing the stream"""
@@ -393,10 +433,6 @@ class FullscreenScreen(Screen):
 
                         self.status_label.text = "Playing embedded..."
                         self.status_label.color = (0.2, 1, 0.2, 1)
-
-                        # Schedule overlay refresh to ensure controls stay on top after video starts
-                        Clock.schedule_once(self._refresh_overlay, 1.0)
-                        Clock.schedule_once(self._refresh_overlay, 2.0)
 
                     except Exception as e:
                         # Fallback to external VLC if embedding fails
@@ -523,42 +559,8 @@ class FullscreenScreen(Screen):
                 self.play_pause_btn.text = "Pause"
                 self.status_label.text = "Playing..."
 
-    def on_screen_touch(self, instance, touch):
-        """Handle screen touch to show/hide controls"""
-        # If touch is on controls, don't toggle
-        if self.controls_overlay.collide_point(*touch.pos):
-            # Reset hide timer when interacting with controls
-            if platform == 'android':
-                self.schedule_hide_controls()
-            return
-
-        # Toggle controls visibility (only on Android)
-        if platform == 'android':
-            if self.controls_visible:
-                self.hide_controls()
-            else:
-                self.show_controls()
-
-    def show_controls(self):
-        """Show controls overlay"""
-        self.controls_visible = True
-        self.controls_overlay.opacity = 1
-        if platform == 'android':
-            self.schedule_hide_controls()
-
-    def hide_controls(self):
-        """Hide controls overlay"""
-        self.controls_visible = False
-        self.controls_overlay.opacity = 0
-
-    def schedule_hide_controls(self):
-        """Schedule auto-hide of controls after 3 seconds"""
-        # Cancel existing timer
-        if self.hide_timer:
-            self.hide_timer.cancel()
-
-        # Schedule new hide timer
-        self.hide_timer = Clock.schedule_once(lambda dt: self.hide_controls(), 3)
+    # Note: Old show/hide/schedule controls methods removed
+    # Now using toggle_controls() method with slide-in panel
 
     def go_back(self, instance):
         """Go back to previous screen"""
@@ -575,10 +577,6 @@ class FullscreenScreen(Screen):
                 self.vlc_process.terminate()
             except:
                 pass
-
-        # Cancel hide timer
-        if self.hide_timer:
-            self.hide_timer.cancel()
 
         # Go back to channels
         App.get_running_app().switch_screen('channels')
@@ -599,30 +597,3 @@ class FullscreenScreen(Screen):
             except:
                 pass
 
-        # Cancel hide timer
-        if self.hide_timer:
-            self.hide_timer.cancel()
-
-    def _refresh_overlay(self, dt):
-        """
-        Force overlay controls to refresh and stay on top of VLC video
-        This works around the z-order issue where VLC's native rendering pushes overlays behind
-        """
-        if platform != 'android' and self.controls_overlay:
-            # Force overlay to redraw by removing and re-adding it
-            parent = self.controls_overlay.parent
-            if parent:
-                # Get current position in parent's children list
-                children = parent.children[:]
-                overlay_index = children.index(self.controls_overlay) if self.controls_overlay in children else 0
-
-                # Remove and re-add to force it to top of rendering stack
-                parent.remove_widget(self.controls_overlay)
-                parent.add_widget(self.controls_overlay, index=overlay_index)
-
-            # Force canvas update
-            self.controls_overlay.canvas.ask_update()
-
-            # Ensure opacity is correct
-            if self.controls_visible:
-                self.controls_overlay.opacity = 1
