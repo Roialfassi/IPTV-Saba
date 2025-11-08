@@ -76,8 +76,32 @@ class FullscreenScreen(Screen):
         else:
             # Desktop: Create placeholder for VLC or show message if not available
             if VLC_AVAILABLE:
-                # Initialize VLC
-                self.vlc_instance = vlc.Instance('--no-xlib')  # No xlib for better Kivy compatibility
+                # Initialize VLC with options that allow overlays to work
+                vlc_args = [
+                    '--no-xlib',  # No xlib for better Kivy compatibility
+                    '--no-video-title-show',  # Don't show title
+                    '--no-overlay',  # CRITICAL: Disable hardware overlay so Kivy widgets appear on top
+                    '--video-on-top=0',  # Don't force video window on top
+                    '--sub-source=marq',  # Enable marquee filter for channel name overlay
+                    '--marq-position=8',  # Bottom center
+                    '--marq-size=18',  # Font size
+                    '--marq-color=0xFFFFFF',  # White text
+                    '--marq-opacity=200',  # Semi-transparent
+                ]
+
+                import sys
+                if sys.platform == 'win32':
+                    # Windows-specific: use DirectDraw instead of Direct3D to avoid overlay issues
+                    vlc_args.extend([
+                        '--vout=directdraw',  # Use DirectDraw (not Direct3D)
+                        '--no-directx-hw-yuv',  # Disable DirectX hardware YUV overlay
+                    ])
+                elif sys.platform.startswith('linux'):
+                    vlc_args.extend([
+                        '--vout=xcb_x11',  # Use X11 output
+                    ])
+
+                self.vlc_instance = vlc.Instance(' '.join(vlc_args))
                 self.vlc_player = self.vlc_instance.media_player_new()
 
                 # Create a dummy widget for video area
@@ -351,11 +375,26 @@ class FullscreenScreen(Screen):
                         self.vlc_player.set_media(media)
                         self.vlc_player.play()
 
+                        # CRITICAL: Set channel name in VLC's marquee overlay
+                        # This appears ON TOP of the video, solving the z-order issue
+                        try:
+                            self.vlc_player.video_set_marquee_string(
+                                vlc.VideoMarqueeOption.Text,
+                                f"📺 {self.channel.name}"
+                            )
+                        except Exception as e:
+                            # Marquee might not be available in some VLC versions
+                            pass
+
                         # Set initial volume
                         self.vlc_player.audio_set_volume(int(self.volume_slider.value))
 
                         self.status_label.text = "Playing embedded..."
                         self.status_label.color = (0.2, 1, 0.2, 1)
+
+                        # Schedule overlay refresh to ensure controls stay on top after video starts
+                        Clock.schedule_once(self._refresh_overlay, 1.0)
+                        Clock.schedule_once(self._refresh_overlay, 2.0)
 
                     except Exception as e:
                         # Fallback to external VLC if embedding fails
@@ -561,3 +600,27 @@ class FullscreenScreen(Screen):
         # Cancel hide timer
         if self.hide_timer:
             self.hide_timer.cancel()
+
+    def _refresh_overlay(self, dt):
+        """
+        Force overlay controls to refresh and stay on top of VLC video
+        This works around the z-order issue where VLC's native rendering pushes overlays behind
+        """
+        if platform != 'android' and self.controls_overlay:
+            # Force overlay to redraw by removing and re-adding it
+            parent = self.controls_overlay.parent
+            if parent:
+                # Get current position in parent's children list
+                children = parent.children[:]
+                overlay_index = children.index(self.controls_overlay) if self.controls_overlay in children else 0
+
+                # Remove and re-add to force it to top of rendering stack
+                parent.remove_widget(self.controls_overlay)
+                parent.add_widget(self.controls_overlay, index=overlay_index)
+
+            # Force canvas update
+            self.controls_overlay.canvas.ask_update()
+
+            # Ensure opacity is correct
+            if self.controls_visible:
+                self.controls_overlay.opacity = 1
