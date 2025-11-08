@@ -1,7 +1,7 @@
 """
 Fullscreen Screen for IPTV-Saba
-Full-screen video player with collapsible control panel
-Uses Kivy Video widget for both desktop and Android (perfect overlay support)
+Full-screen video player with side-by-side control panel
+Uses VLC on desktop for reliable playback with dedicated video space
 """
 
 import os
@@ -19,74 +19,114 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.utils import platform
 
-# Import Kivy Video widget for both desktop and Android
+# VLC for desktop
+VLC_AVAILABLE = False
+if platform not in ('android', 'ios'):
+    try:
+        import vlc
+        VLC_AVAILABLE = True
+    except ImportError:
+        print("VLC not available - video playback will not work on desktop")
+        print("Install with: pip install python-vlc")
+
+# Import Kivy Video widget for Android
 from kivy.uix.video import Video
 
 
 class FullscreenScreen(Screen):
-    """Fullscreen video player with collapsible controls overlay"""
+    """Fullscreen video player with side-by-side control panel"""
 
     def __init__(self, controller, **kwargs):
         super().__init__(**kwargs)
         self.controller = controller
         self.channel = None
         self.video_player = None
+        self.vlc_instance = None
+        self.vlc_player = None
         self.controls_visible = False  # Panel starts collapsed
 
         self.build_ui()
 
     def build_ui(self):
         """Build the fullscreen UI with side-by-side layout"""
-        # Main horizontal layout: [Video Player] [Control Panel]
+        # Main horizontal layout: [Video Section (expands/shrinks)] [Control Panel (0/400dp)]
         main_layout = BoxLayout(orientation='horizontal', spacing=0)
 
-        # ========== VIDEO PLAYER SECTION ==========
-        # Video container with black background (takes remaining space)
-        self.video_container = FloatLayout()
+        # ========== LEFT SECTION: VIDEO PLAYER ==========
+        # This section dynamically resizes when control panel opens/closes
+        self.video_section = FloatLayout()
 
-        # Black background for video
-        with self.video_container.canvas.before:
+        # Black background
+        with self.video_section.canvas.before:
             Color(0, 0, 0, 1)
-            self.video_bg = Rectangle(size=self.video_container.size, pos=self.video_container.pos)
-        self.video_container.bind(size=self._update_video_bg, pos=self._update_video_bg)
+            self.video_bg = Rectangle(size=self.video_section.size, pos=self.video_section.pos)
+        self.video_section.bind(size=self._update_video_bg, pos=self._update_video_bg)
 
-        # Video player widget
-        self.video_player = Video(
-            state='stop',
-            options={'eos': 'loop'},
-            size_hint=(1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5},
-            allow_stretch=True,
-            keep_ratio=True
-        )
-        self.video_container.add_widget(self.video_player)
+        # Platform-specific video player
+        if platform in ('android', 'ios'):
+            # Android: Use Kivy Video widget
+            self.video_player = Video(
+                state='stop',
+                options={'eos': 'loop'},
+                size_hint=(1, 1),
+                pos_hint={'center_x': 0.5, 'center_y': 0.5},
+                allow_stretch=True,
+                keep_ratio=True
+            )
+            self.video_section.add_widget(self.video_player)
+        else:
+            # Desktop: Use VLC in dedicated space (no z-index issues!)
+            if VLC_AVAILABLE:
+                # Create VLC instance with minimal args
+                vlc_args = ['--no-xlib']
+                try:
+                    self.vlc_instance = vlc.Instance(' '.join(vlc_args))
+                    if not self.vlc_instance:
+                        self.vlc_instance = vlc.Instance()
+                except:
+                    self.vlc_instance = vlc.Instance()
 
-        # Toggle button overlay on video (top-right corner)
+                if self.vlc_instance:
+                    self.vlc_player = self.vlc_instance.media_player_new()
+
+                    # VLC will render here when we bind the window handle
+                    # Bind happens in on_enter after layout is ready
+            else:
+                # Fallback: show error message
+                error_label = Label(
+                    text="VLC not installed!\n\nInstall with:\npip install python-vlc",
+                    color=(1, 0.2, 0.2, 1),
+                    font_size=dp(20),
+                    halign='center'
+                )
+                error_label.bind(size=error_label.setter('text_size'))
+                self.video_section.add_widget(error_label)
+
+        # Toggle button in top-right of video section
         self.toggle_button = Button(
-            text="☰",  # Menu icon
+            text="☰",
             size_hint=(None, None),
-            size=(dp(50), dp(50)),
+            size=(dp(60), dp(60)),
             pos_hint={'right': 1, 'top': 1},
-            background_color=(0.898, 0.035, 0.078, 0.9),  # Netflix red
-            font_size=dp(24),
+            background_color=(0.898, 0.035, 0.078, 0.95),
+            font_size=dp(28),
             bold=True
         )
         self.toggle_button.bind(on_press=self.toggle_controls)
-        self.video_container.add_widget(self.toggle_button)
+        self.video_section.add_widget(self.toggle_button)
 
-        main_layout.add_widget(self.video_container)
+        main_layout.add_widget(self.video_section)
 
-        # ========== COLLAPSIBLE CONTROL PANEL ==========
-        # Panel that starts hidden (width=0) and expands to 300dp when opened
-        self.controls_panel = BoxLayout(
-            orientation='vertical',
+        # ========== RIGHT SECTION: CONTROL PANEL ==========
+        # Starts at width=0 (hidden), expands to 400dp when toggled
+        self.controls_panel = FloatLayout(
             size_hint=(None, 1),
-            width=0  # Start collapsed (width=0)
+            width=0  # Starts collapsed
         )
 
         # Panel background
         with self.controls_panel.canvas.before:
-            Color(0.1, 0.1, 0.1, 1)  # Dark background
+            Color(0.15, 0.15, 0.15, 1)  # Dark gray
             self.panel_bg = Rectangle(
                 size=self.controls_panel.size,
                 pos=self.controls_panel.pos
@@ -213,12 +253,10 @@ class FullscreenScreen(Screen):
         )
         controls_container.add_widget(self.status_label)
 
-        # Add controls to panel (centered)
-        panel_wrapper = FloatLayout()
-        panel_wrapper.add_widget(controls_container)
-        self.controls_panel.add_widget(panel_wrapper)
+        # Add controls to panel (centered vertically)
+        self.controls_panel.add_widget(controls_container)
 
-        # Add panel to main layout (starts hidden with width=0)
+        # Add panel to main layout (starts with width=0)
         main_layout.add_widget(self.controls_panel)
 
         # Track panel state
@@ -237,18 +275,18 @@ class FullscreenScreen(Screen):
         self.panel_bg.pos = instance.pos
 
     def toggle_controls(self, instance):
-        """Toggle control panel - video resizes automatically"""
+        """Toggle control panel - video section resizes automatically"""
         from kivy.animation import Animation
 
         if self.controls_visible:
-            # Collapse panel (width → 0, video expands to full screen)
-            anim = Animation(width=0, duration=0.3, t='out_quad')
+            # Collapse panel (width → 0, video section expands to full screen)
+            anim = Animation(width=0, duration=0.35, t='out_cubic')
             anim.start(self.controls_panel)
             self.toggle_button.text = "☰"  # Menu icon
             self.controls_visible = False
         else:
-            # Expand panel (width → 300dp, video shrinks to make room)
-            anim = Animation(width=dp(300), duration=0.3, t='out_quad')
+            # Expand panel (width → 400dp, video section shrinks automatically)
+            anim = Animation(width=dp(400), duration=0.35, t='out_cubic')
             anim.start(self.controls_panel)
             self.toggle_button.text = "✕"  # Close icon
             self.controls_visible = True
@@ -265,47 +303,76 @@ class FullscreenScreen(Screen):
         """Called when entering the screen"""
         super().on_enter()
 
+        # Desktop: Bind VLC to window handle after layout is ready
+        if platform not in ('android', 'ios') and self.vlc_player:
+            Clock.schedule_once(self._bind_vlc_window, 0.1)
+
         if self.channel:
             # Start playback
-            self.play_stream()
+            Clock.schedule_once(lambda dt: self.play_stream(), 0.2)
 
-            # Panel starts collapsed on both platforms
-            # User can click toggle button to open
+    def _bind_vlc_window(self, dt):
+        """Bind VLC player to window handle (desktop only)"""
+        if not self.vlc_player:
+            return
+
+        try:
+            # Get the window handle
+            import sys
+            if sys.platform.startswith('linux'):
+                self.vlc_player.set_xwindow(Window.native_handle)
+            elif sys.platform == 'win32':
+                self.vlc_player.set_hwnd(Window.native_handle)
+            elif sys.platform == 'darwin':
+                self.vlc_player.set_nsobject(Window.native_handle)
+
+            print(f"[VLC] Bound to window handle: {Window.native_handle}")
+        except Exception as e:
+            print(f"[VLC] Failed to bind window: {e}")
 
     def play_stream(self):
-        """Start playing the stream using Kivy Video widget"""
+        """Start playing the stream (platform-specific)"""
         if not self.channel:
             return
 
         try:
-            # Check video backend
-            import os
-            backend = os.environ.get('KIVY_VIDEO', 'auto')
-            print(f"[VIDEO] Using backend: {backend}")
-            print(f"[VIDEO] Stream URL: {self.channel.stream_url}")
+            if platform in ('android', 'ios'):
+                # Android: Use Kivy Video widget
+                if self.video_player:
+                    self.video_player.source = self.channel.stream_url
+                    self.video_player.state = 'play'
+                    self.video_player.volume = self.volume_slider.value / 100.0
 
-            # Use Kivy Video widget for both Android and Desktop
-            # This ensures overlays work perfectly (no VLC z-order issues!)
-            self.video_player.source = self.channel.stream_url
-            self.video_player.state = 'play'
+                    # Bind events
+                    self.video_player.bind(on_load=self._on_video_load)
+                    self.video_player.bind(on_error=self._on_video_error)
+
+                    self.status_label.text = "Loading stream..."
+                    self.status_label.color = (0.8, 0.8, 0.8, 1)
+            else:
+                # Desktop: Use VLC
+                if self.vlc_player:
+                    print(f"[VLC] Playing stream: {self.channel.stream_url}")
+
+                    # Create media and play
+                    media = self.vlc_instance.media_new(self.channel.stream_url)
+                    self.vlc_player.set_media(media)
+                    self.vlc_player.play()
+
+                    # Set volume (0-100)
+                    volume = int(self.volume_slider.value)
+                    self.vlc_player.audio_set_volume(volume)
+
+                    self.status_label.text = "Playing with VLC..."
+                    self.status_label.color = (0.2, 1, 0.2, 1)
 
             if hasattr(self, 'play_pause_btn'):
                 self.play_pause_btn.text = "⏸ Pause"
 
-            # Set initial volume
-            self.video_player.volume = self.volume_slider.value / 100.0
-
-            self.status_label.text = f"Loading stream...\nBackend: {backend}"
-            self.status_label.color = (0.8, 0.8, 0.8, 1)
-
-            # Bind to video events to track playback
-            self.video_player.bind(on_load=self._on_video_load)
-            self.video_player.bind(on_error=self._on_video_error)
-
         except Exception as e:
             error_msg = str(e)
-            print(f"[VIDEO ERROR] {error_msg}")
-            self.status_label.text = f"Error: {error_msg}\n\nMake sure you installed:\npip install ffpyplayer"
+            print(f"[PLAYBACK ERROR] {error_msg}")
+            self.status_label.text = f"Error: {error_msg}"
             self.status_label.color = (1, 0.2, 0.2, 1)
 
     def _on_video_load(self, instance):
@@ -319,51 +386,79 @@ class FullscreenScreen(Screen):
         self.status_label.color = (1, 0.2, 0.2, 1)
 
     def stop_playback(self, instance):
-        """Stop playback completely"""
-        if self.video_player:
-            self.video_player.state = 'stop'
-            if hasattr(self, 'play_pause_btn'):
-                self.play_pause_btn.text = "▶ Play"
-            self.status_label.text = "Stopped"
+        """Stop playback completely (platform-specific)"""
+        if platform in ('android', 'ios'):
+            if self.video_player:
+                self.video_player.state = 'stop'
+        else:
+            if self.vlc_player:
+                self.vlc_player.stop()
+
+        if hasattr(self, 'play_pause_btn'):
+            self.play_pause_btn.text = "▶ Play"
+        self.status_label.text = "Stopped"
 
     def on_volume_change(self, instance, value):
-        """Handle volume change"""
+        """Handle volume change (platform-specific)"""
         # Update volume label
         self.volume_value_label.text = f"{int(value)}%"
 
         # Apply volume to player
-        if self.video_player:
-            self.video_player.volume = value / 100.0
+        if platform in ('android', 'ios'):
+            if self.video_player:
+                self.video_player.volume = value / 100.0
+        else:
+            if self.vlc_player:
+                self.vlc_player.audio_set_volume(int(value))
 
     def toggle_play_pause(self, instance):
-        """Toggle play/pause"""
-        if self.video_player:
-            if self.video_player.state == 'play':
-                self.video_player.state = 'pause'
-                self.play_pause_btn.text = "▶ Play"
-                self.status_label.text = "Paused"
-            else:
-                self.video_player.state = 'play'
-                self.play_pause_btn.text = "⏸ Pause"
-                self.status_label.text = "Playing..."
+        """Toggle play/pause (platform-specific)"""
+        if platform in ('android', 'ios'):
+            if self.video_player:
+                if self.video_player.state == 'play':
+                    self.video_player.state = 'pause'
+                    self.play_pause_btn.text = "▶ Play"
+                    self.status_label.text = "Paused"
+                else:
+                    self.video_player.state = 'play'
+                    self.play_pause_btn.text = "⏸ Pause"
+                    self.status_label.text = "Playing..."
+        else:
+            if self.vlc_player:
+                if self.vlc_player.is_playing():
+                    self.vlc_player.pause()
+                    self.play_pause_btn.text = "▶ Play"
+                    self.status_label.text = "Paused"
+                else:
+                    self.vlc_player.play()
+                    self.play_pause_btn.text = "⏸ Pause"
+                    self.status_label.text = "Playing..."
 
     # Note: Old show/hide/schedule controls methods removed
     # Now using toggle_controls() method with slide-in panel
 
     def go_back(self, instance):
         """Go back to previous screen"""
-        # Stop playback
-        if self.video_player:
-            self.video_player.state = 'stop'
-            self.video_player.source = ''
+        # Stop playback (platform-specific)
+        if platform in ('android', 'ios'):
+            if self.video_player:
+                self.video_player.state = 'stop'
+                self.video_player.source = ''
+        else:
+            if self.vlc_player:
+                self.vlc_player.stop()
 
         # Go back to channels
         App.get_running_app().switch_screen('channels')
 
     def on_leave(self):
         """Called when leaving the screen"""
-        # Stop playback
-        if self.video_player:
-            self.video_player.state = 'stop'
-            self.video_player.source = ''
+        # Stop playback (platform-specific)
+        if platform in ('android', 'ios'):
+            if self.video_player:
+                self.video_player.state = 'stop'
+                self.video_player.source = ''
+        else:
+            if self.vlc_player:
+                self.vlc_player.stop()
 
