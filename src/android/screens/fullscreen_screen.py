@@ -49,13 +49,30 @@ class FullscreenScreen(Screen):
         # ========== VIDEO PLAYER (Kivy Video Widget) ==========
         # Use Kivy Video widget for both Android AND Desktop
         # This ensures overlays work perfectly (no VLC z-order issues)
+
+        # Container for video with black background
+        video_container = FloatLayout(
+            size_hint=(1, 1),
+            pos_hint={'x': 0, 'y': 0}
+        )
+
+        # Black background for video container
+        with video_container.canvas.before:
+            Color(0, 0, 0, 1)
+            self.video_bg = Rectangle(size=video_container.size, pos=video_container.pos)
+        video_container.bind(size=self._update_video_bg, pos=self._update_video_bg)
+
         self.video_player = Video(
             state='stop',
             options={'eos': 'loop'},
             size_hint=(1, 1),
-            pos_hint={'x': 0, 'y': 0}
+            pos_hint={'x': 0, 'y': 0},
+            allow_stretch=True,  # Stretch video to fill container
+            keep_ratio=True      # Keep aspect ratio
         )
-        main_layout.add_widget(self.video_player)
+
+        video_container.add_widget(self.video_player)
+        main_layout.add_widget(video_container)
 
         # ========== COLLAPSIBLE CONTROL PANEL ==========
         # Small toggle button always visible, slides in full controls when clicked
@@ -225,6 +242,11 @@ class FullscreenScreen(Screen):
         self.bg_rect.size = instance.size
         self.bg_rect.pos = instance.pos
 
+    def _update_video_bg(self, instance, value):
+        """Update video container background rectangle"""
+        self.video_bg.size = instance.size
+        self.video_bg.pos = instance.pos
+
     def _update_panel_bg(self, instance, value):
         """Update panel background rectangle"""
         self.panel_bg.size = instance.size
@@ -272,6 +294,12 @@ class FullscreenScreen(Screen):
             return
 
         try:
+            # Check video backend
+            import os
+            backend = os.environ.get('KIVY_VIDEO', 'auto')
+            print(f"[VIDEO] Using backend: {backend}")
+            print(f"[VIDEO] Stream URL: {self.channel.stream_url}")
+
             # Use Kivy Video widget for both Android and Desktop
             # This ensures overlays work perfectly (no VLC z-order issues!)
             self.video_player.source = self.channel.stream_url
@@ -283,7 +311,7 @@ class FullscreenScreen(Screen):
             # Set initial volume
             self.video_player.volume = self.volume_slider.value / 100.0
 
-            self.status_label.text = "Loading stream..."
+            self.status_label.text = f"Loading stream...\nBackend: {backend}"
             self.status_label.color = (0.8, 0.8, 0.8, 1)
 
             # Bind to video events to track playback
@@ -291,7 +319,9 @@ class FullscreenScreen(Screen):
             self.video_player.bind(on_error=self._on_video_error)
 
         except Exception as e:
-            self.status_label.text = f"Error: {str(e)}"
+            error_msg = str(e)
+            print(f"[VIDEO ERROR] {error_msg}")
+            self.status_label.text = f"Error: {error_msg}\n\nMake sure you installed:\npip install ffpyplayer"
             self.status_label.color = (1, 0.2, 0.2, 1)
 
     def _on_video_load(self, instance):
