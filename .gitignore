@@ -17,3 +17,4 @@ iptv_app.spec
 *.mkv
 /src/dist
 *.mp4
+src/iptv_app.exe
