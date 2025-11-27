@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+
+model Profile {
+  id          String      @id @default(uuid())
+  name        String
+  avatar      String?
+  isActive    Boolean     @default(true)
+  settings    String      @default("{}")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  m3uSources  M3USource[]
+  channels    Channel[]
+  series      Series[]
+  favorites   Favorite[]
+  watchHistory WatchHistory[]
+  downloads    Download[]
+  searchHistory SearchHistory[]
+  profileSettings ProfileSettings?
+  
+  @@index([isActive])
+  @@map("profiles")
+}
+
+model M3USource {
+  id          String      @id @default(uuid())
+  url         String
+  name        String?
+  lastFetched DateTime?
+  lastStatus  String?     // SUCCESS, FAILED, PARSING
+  totalEntries Int        @default(0)
+  profileId   String
+  profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@index([profileId])
+  @@index([lastFetched])
+}
+
+model Channel {
+  id          String      @id @default(uuid())
+  tvgId       String?
+  tvgName     String
+  displayName String
+  logo        String?
+  url         String
+  groupTitle  String
+  contentType String      // LIVESTREAM, MOVIE
+  metadata    String      @default("{}")
+  profileId   String
+  profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  
+  @@index([profileId, contentType])
+  @@index([groupTitle])
+  @@index([tvgId])
+}
+
+model Series {
+  id          String      @id @default(uuid())
+  name        String
+  normalizedName String   // for searching/grouping
+  logo        String?
+  groupTitle  String
+  profileId   String
+  profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  episodes    Episode[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@unique([normalizedName, profileId])
+  @@index([profileId])
+}
+
+model Episode {
+  id            String      @id @default(uuid())
+  seriesId      String
+  series        Series      @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  seasonNumber  Int
+  episodeNumber Int
+  title         String?
+  url           String
+  tvgName       String
+  createdAt     DateTime    @default(now())
+  
+  @@unique([seriesId, seasonNumber, episodeNumber])
+  @@index([seriesId])
+}
+
+model Favorite {
+  id          String      @id @default(uuid())
+  profileId   String
+  profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  contentType String      // CHANNEL, MOVIE, SERIES
+  contentId   String      // ID of the channel/movie/series
+  
+  // Denormalized data for quick access
+  title       String
+  logo        String?
+  url         String?     // For channels/movies
+  
+  createdAt   DateTime    @default(now())
+  
+  @@unique([profileId, contentType, contentId])
+  @@index([profileId, contentType])
+  @@index([createdAt])
+  @@map("favorites")
+}
+
+model WatchHistory {
+  id          String      @id @default(uuid())
+  profileId   String
+  profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  contentType String      // CHANNEL, MOVIE, EPISODE
+  contentId   String
+  
+  // Denormalized data
+  title       String
+  logo        String?
+  url         String
+  
+  // For episodes
+  seriesId    String?
+  seriesName  String?
+  seasonNumber Int?
+  episodeNumber Int?
+  
+  // Watch progress
+  watchedAt   DateTime    @default(now())
+  progress    Int         @default(0) // Seconds watched
+  duration    Int         @default(0) // Total duration in seconds
+  
+  @@unique([profileId, contentType, contentId])
+  @@index([profileId, watchedAt])
+  @@map("watch_history")
+}
+
+model Download {
+  id          String      @id @default(uuid())
+  profileId   String
+  profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  contentType String      // MOVIE, EPISODE
+  contentId   String
+  
+  title       String
+  logo        String?
+  url         String      // Original stream URL
+  
+  // For episodes
+  seriesId    String?
+  seriesName  String?
+  seasonNumber Int?
+  episodeNumber Int?
+  
+  // Download info
+  status      String      // QUEUED, DOWNLOADING, COMPLETED, FAILED, PAUSED
+  progress    Float       @default(0) // 0-100
+  fileSize    BigInt      @default(0) // bytes
+  downloadedSize BigInt   @default(0) // bytes
+  filePath    String?     // Local file path when completed
+  
+  error       String?
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  completedAt DateTime?
+  
+  @@unique([profileId, contentType, contentId])
+  @@index([profileId, status])
+  @@map("downloads")
+}
+
+model SearchHistory {
+  id          String      @id @default(uuid())
+  profileId   String
+  profile     Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  query       String
+  filters     String?     // Store filter selections (JSON text)
+  resultCount Int         @default(0)
+  
+  createdAt   DateTime    @default(now())
+  
+  @@index([profileId, createdAt])
+  @@map("search_history")
+}
+
+model ProfileSettings {
+  id                String      @id @default(uuid())
+  profileId         String      @unique
+  profile           Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  // Playback settings
+  autoplay          Boolean     @default(true)
+  defaultQuality    String      @default("auto") // auto, 1080p, 720p, 480p
+  skipIntroSeconds  Int         @default(0) // Auto-skip intro (0 = disabled)
+  defaultVolume     Int         @default(80)
+  subtitlesEnabled  Boolean     @default(false)
+  subtitlesLanguage String      @default("en")
+  
+  // Appearance settings
+  theme             String      @default("dark") // dark, light
+  accentColor       String      @default("#3b82f6")
+  compactMode       Boolean     @default(false)
+  showEPG           Boolean     @default(true)
+  gridSize          String      @default("medium") // small, medium, large
+  
+  // Content settings
+  contentLanguage   String      @default("en")
+  ageRating         String      @default("all") // all, pg, pg13, r
+  hideAdultContent  Boolean     @default(false)
+  
+  // Data settings
+  cacheEnabled      Boolean     @default(true)
+  cacheSize         Int         @default(500) // MB
+  downloadQuality   String      @default("720p")
+  wifiOnlyDownloads Boolean     @default(true)
+  
+  // Notifications
+  reminderEnabled   Boolean     @default(true)
+  reminderMinutes   Int         @default(5)
+  newContentAlert   Boolean     @default(true)
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  @@map("profile_settings")
+}

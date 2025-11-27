@@ -19,3 +19,4 @@ iptv_app.spec
 *.mp4
 src/iptv_app.exe
 src/iptv_app.exe
+/backend/node_modules

@@ -1,0 +1,1423 @@
+2025-11-27 00:04:22:422 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 00:16:53:1653 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 00:17:40:1740 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 07:08:22:822 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 07:16:05:165 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 07:29:18:2918 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 07:32:14:3214 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 18:09:19:919 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 18:25:48:2548 [32minfo[39m: [32mStarting sync for source 7d40fa05-28a6-4e1d-8aec-1e0782f3fef2[39m
+2025-11-27 18:25:48:2548 [31merror[39m: [31mSync failed for source 7d40fa05-28a6-4e1d-8aec-1e0782f3fef2: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\ChannelRepository.ts:43:41[39m
+
+[31m  40 }[39m
+[31m  41 [39m
+[31m  42 async bulkCreate(channels: Omit<Channel, 'id' | 'createdAt'>[]): Promise<number> {[39m
+[31m→ 43     const result = await this.model.createMany({[39m
+[31m           data: [[39m
+[31m             {[39m
+[31m               tvgId: "AngelTV.in@Hebrew",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Angel TV Hebrew (720p)",[39m
+[31m               logo: "https://i.imgur.com/qKLEGU7.png",[39m
+[31m               url: "https://janya-digimix.akamaized.net/vglive-sk-150533/hebrew/ngrp:angelhebrew_all/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Angel TV Hebrew (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel9.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/pttM3KQ.png",[39m
+[31m               url: "http://50.7.231.221:8081/185/index.m3u8?wmsAuthSign=okad",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "HalaTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/028M4Ew.png",[39m
+[31m               url: "https://stream.panet.com/edge/halaTV/playlist.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Hidabroot.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hidabroot (1080p)",[39m
+[31m               logo: "https://i.imgur.com/CTH4Hu2.png",[39m
+[31m               url: "https://cdn.cybercdn.live/HidabrootIL/Live97/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hidabroot (1080p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSArabic.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News Arabic (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/95116e8d79524d87bf3ac20ba04241e3/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News Arabic (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSFrench.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News French (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/41814196d97e433fb401c5e632d985e9/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News French (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSHebrew.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "i24NEWS Hebrew",[39m
+[31m               logo: "https://www.i24news.tv/images/favicon.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/d89ede8094c741b7924120b27764153c/eu-central-1/5377161796001/profile_0/chunklist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "i24NEWS Hebrew",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "IsraelParsTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Israel Pars TV (540p)",[39m
+[31m               logo: "https://i.imgur.com/UM5Gf4L.png",[39m
+[31m               url: "https://live.pars-israel.com/iptv/stream.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Israel Pars TV (540p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KabbalahforthePeopleIsrael.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/VxAHOgr.png",[39m
+[31m               url: "https://edge3.uk.kab.tv/live/tv66-heb-high/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Kan11.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "KAN 11 Israel (1080p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Kan11Logo.svg/512px-Kan11Logo.svg.png",[39m
+[31m               url: "https://kan11w.media.kan.org.il/hls/live/2105694/2105694/master.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "KAN 11 Israel (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KanEducational.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kan Kids (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/KanHinuchit.svg/512px-KanHinuchit.svg.png",[39m
+[31m               url: "https://kan23.media.kan.org.il/hls/live/2024691/2024691/master.m3u8",[39m
+[31m               groupTitle: "Education",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kan Kids (720p)",[39m
+[31m                 category: "Education"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Keshet12.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/fY3eakc.png",[39m
+[31m               url: "https://mako-streaming.akamaized.net/stream/hls/live/2033791/k12n12wad/profile/1/hdntl=exp=1757445516~acl=/*~data=hdntl~hmac=a8baf01127ae46cd6fd241cf61db8590d7eacc3406f4735ed2defef329496b8a/profileManifest.m3u8?_did=6cfbfc673e5d5f7f274bf96b6c72f28ce1a53f82&_uid=0195a46a-9f11-4704-a944-301512682f7d&rK=bn",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KnessetChannel.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/QXB1jv8.png",[39m
+[31m               url: "https://contact.gostreaming.tv/Knesset/myStream/playlist.m3u8",[39m
+[31m               groupTitle: "Legislative",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m                 category: "Legislative"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Makan33.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Makan 33 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/RVtQTed.png",[39m
+[31m               url: "https://makan.media.kan.org.il/hls/live/2024680/2024680/master.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Makan 33 (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Now14.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Now 14 (720p)",[39m
+[31m               logo: "https://i.imgur.com/Iq2Kb69.png",[39m
+[31m               url: "https://now14.g-mana.live/media/91517161-44ab-4e46-af70-e9fe26117d2e/mainManifest.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Now 14 (720p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "RelevantTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Relevant TV (1080p)",[39m
+[31m               logo: "https://i.imgur.com/jCZ5gFO.png",[39m
+[31m               url: "https://6180c994cb835402.mediapackage.eu-west-1.amazonaws.com/out/v1/f1339272dd24416ca60b00e69075d783/index.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Relevant TV (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel13.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Reshet 13 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/eFM3bTq.png",[39m
+[31m               url: "https://d18b0e6mopany4.cloudfront.net/out/v1/08bc71cf0a0f4712b6b03c732b0e6d25/index.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Reshet 13 (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "ShelanuTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Shelanu TV (720p)",[39m
+[31m               logo: "https://i.imgur.com/UVz2Ojq.png",[39m
+[31m               url: "https://1247634592.rsc.cdn77.org/1247634592/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Shelanu TV (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             }[39m
+[31m           ],[39m
+[31m           skipDuplicates: true[39m
+[31m           ~~~~~~~~~~~~~~[39m
+[31m         })[39m
+
+[31mUnknown argument `skipDuplicates`. Available options are marked with ?.[39m
+2025-11-27 18:26:02:262 [32minfo[39m: [32mStarting sync for source fcdcf601-42dd-4fbd-999d-a105346ac810[39m
+2025-11-27 18:26:03:263 [31merror[39m: [31mSync failed for source fcdcf601-42dd-4fbd-999d-a105346ac810: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\ChannelRepository.ts:43:41[39m
+
+[31m  40 }[39m
+[31m  41 [39m
+[31m  42 async bulkCreate(channels: Omit<Channel, 'id' | 'createdAt'>[]): Promise<number> {[39m
+[31m→ 43     const result = await this.model.createMany({[39m
+[31m           data: [[39m
+[31m             {[39m
+[31m               tvgId: "AngelTV.in@Hebrew",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Angel TV Hebrew (720p)",[39m
+[31m               logo: "https://i.imgur.com/qKLEGU7.png",[39m
+[31m               url: "https://janya-digimix.akamaized.net/vglive-sk-150533/hebrew/ngrp:angelhebrew_all/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Angel TV Hebrew (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel9.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/pttM3KQ.png",[39m
+[31m               url: "http://50.7.231.221:8081/185/index.m3u8?wmsAuthSign=okad",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "HalaTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/028M4Ew.png",[39m
+[31m               url: "https://stream.panet.com/edge/halaTV/playlist.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Hidabroot.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hidabroot (1080p)",[39m
+[31m               logo: "https://i.imgur.com/CTH4Hu2.png",[39m
+[31m               url: "https://cdn.cybercdn.live/HidabrootIL/Live97/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hidabroot (1080p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSArabic.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News Arabic (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/95116e8d79524d87bf3ac20ba04241e3/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News Arabic (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSFrench.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News French (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/41814196d97e433fb401c5e632d985e9/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News French (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSHebrew.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "i24NEWS Hebrew",[39m
+[31m               logo: "https://www.i24news.tv/images/favicon.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/d89ede8094c741b7924120b27764153c/eu-central-1/5377161796001/profile_0/chunklist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "i24NEWS Hebrew",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "IsraelParsTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Israel Pars TV (540p)",[39m
+[31m               logo: "https://i.imgur.com/UM5Gf4L.png",[39m
+[31m               url: "https://live.pars-israel.com/iptv/stream.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Israel Pars TV (540p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KabbalahforthePeopleIsrael.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/VxAHOgr.png",[39m
+[31m               url: "https://edge3.uk.kab.tv/live/tv66-heb-high/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Kan11.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "KAN 11 Israel (1080p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Kan11Logo.svg/512px-Kan11Logo.svg.png",[39m
+[31m               url: "https://kan11w.media.kan.org.il/hls/live/2105694/2105694/master.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "KAN 11 Israel (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KanEducational.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kan Kids (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/KanHinuchit.svg/512px-KanHinuchit.svg.png",[39m
+[31m               url: "https://kan23.media.kan.org.il/hls/live/2024691/2024691/master.m3u8",[39m
+[31m               groupTitle: "Education",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kan Kids (720p)",[39m
+[31m                 category: "Education"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Keshet12.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/fY3eakc.png",[39m
+[31m               url: "https://mako-streaming.akamaized.net/stream/hls/live/2033791/k12n12wad/profile/1/hdntl=exp=1757445516~acl=/*~data=hdntl~hmac=a8baf01127ae46cd6fd241cf61db8590d7eacc3406f4735ed2defef329496b8a/profileManifest.m3u8?_did=6cfbfc673e5d5f7f274bf96b6c72f28ce1a53f82&_uid=0195a46a-9f11-4704-a944-301512682f7d&rK=bn",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KnessetChannel.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/QXB1jv8.png",[39m
+[31m               url: "https://contact.gostreaming.tv/Knesset/myStream/playlist.m3u8",[39m
+[31m               groupTitle: "Legislative",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m                 category: "Legislative"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Makan33.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Makan 33 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/RVtQTed.png",[39m
+[31m               url: "https://makan.media.kan.org.il/hls/live/2024680/2024680/master.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Makan 33 (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Now14.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Now 14 (720p)",[39m
+[31m               logo: "https://i.imgur.com/Iq2Kb69.png",[39m
+[31m               url: "https://now14.g-mana.live/media/91517161-44ab-4e46-af70-e9fe26117d2e/mainManifest.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Now 14 (720p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "RelevantTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Relevant TV (1080p)",[39m
+[31m               logo: "https://i.imgur.com/jCZ5gFO.png",[39m
+[31m               url: "https://6180c994cb835402.mediapackage.eu-west-1.amazonaws.com/out/v1/f1339272dd24416ca60b00e69075d783/index.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Relevant TV (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel13.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Reshet 13 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/eFM3bTq.png",[39m
+[31m               url: "https://d18b0e6mopany4.cloudfront.net/out/v1/08bc71cf0a0f4712b6b03c732b0e6d25/index.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Reshet 13 (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "ShelanuTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Shelanu TV (720p)",[39m
+[31m               logo: "https://i.imgur.com/UVz2Ojq.png",[39m
+[31m               url: "https://1247634592.rsc.cdn77.org/1247634592/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Shelanu TV (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             }[39m
+[31m           ],[39m
+[31m           skipDuplicates: true[39m
+[31m           ~~~~~~~~~~~~~~[39m
+[31m         })[39m
+
+[31mUnknown argument `skipDuplicates`. Available options are marked with ?.[39m
+2025-11-27 18:26:12:2612 [32minfo[39m: [32mStarting sync for source 3740237c-ffe3-40f5-a2d1-1b31fc68ff33[39m
+2025-11-27 18:26:12:2612 [31merror[39m: [31mSync failed for source 3740237c-ffe3-40f5-a2d1-1b31fc68ff33: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\ChannelRepository.ts:43:41[39m
+
+[31m  40 }[39m
+[31m  41 [39m
+[31m  42 async bulkCreate(channels: Omit<Channel, 'id' | 'createdAt'>[]): Promise<number> {[39m
+[31m→ 43     const result = await this.model.createMany({[39m
+[31m           data: [[39m
+[31m             {[39m
+[31m               tvgId: "AngelTV.in@Hebrew",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Angel TV Hebrew (720p)",[39m
+[31m               logo: "https://i.imgur.com/qKLEGU7.png",[39m
+[31m               url: "https://janya-digimix.akamaized.net/vglive-sk-150533/hebrew/ngrp:angelhebrew_all/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Angel TV Hebrew (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel9.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/pttM3KQ.png",[39m
+[31m               url: "http://50.7.231.221:8081/185/index.m3u8?wmsAuthSign=okad",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "HalaTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/028M4Ew.png",[39m
+[31m               url: "https://stream.panet.com/edge/halaTV/playlist.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Hidabroot.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hidabroot (1080p)",[39m
+[31m               logo: "https://i.imgur.com/CTH4Hu2.png",[39m
+[31m               url: "https://cdn.cybercdn.live/HidabrootIL/Live97/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hidabroot (1080p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSArabic.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News Arabic (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/95116e8d79524d87bf3ac20ba04241e3/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News Arabic (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSFrench.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News French (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/41814196d97e433fb401c5e632d985e9/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News French (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSHebrew.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "i24NEWS Hebrew",[39m
+[31m               logo: "https://www.i24news.tv/images/favicon.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/d89ede8094c741b7924120b27764153c/eu-central-1/5377161796001/profile_0/chunklist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "i24NEWS Hebrew",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "IsraelParsTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Israel Pars TV (540p)",[39m
+[31m               logo: "https://i.imgur.com/UM5Gf4L.png",[39m
+[31m               url: "https://live.pars-israel.com/iptv/stream.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Israel Pars TV (540p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KabbalahforthePeopleIsrael.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/VxAHOgr.png",[39m
+[31m               url: "https://edge3.uk.kab.tv/live/tv66-heb-high/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Kan11.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "KAN 11 Israel (1080p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Kan11Logo.svg/512px-Kan11Logo.svg.png",[39m
+[31m               url: "https://kan11w.media.kan.org.il/hls/live/2105694/2105694/master.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "KAN 11 Israel (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KanEducational.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kan Kids (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/KanHinuchit.svg/512px-KanHinuchit.svg.png",[39m
+[31m               url: "https://kan23.media.kan.org.il/hls/live/2024691/2024691/master.m3u8",[39m
+[31m               groupTitle: "Education",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kan Kids (720p)",[39m
+[31m                 category: "Education"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Keshet12.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/fY3eakc.png",[39m
+[31m               url: "https://mako-streaming.akamaized.net/stream/hls/live/2033791/k12n12wad/profile/1/hdntl=exp=1757445516~acl=/*~data=hdntl~hmac=a8baf01127ae46cd6fd241cf61db8590d7eacc3406f4735ed2defef329496b8a/profileManifest.m3u8?_did=6cfbfc673e5d5f7f274bf96b6c72f28ce1a53f82&_uid=0195a46a-9f11-4704-a944-301512682f7d&rK=bn",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KnessetChannel.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/QXB1jv8.png",[39m
+[31m               url: "https://contact.gostreaming.tv/Knesset/myStream/playlist.m3u8",[39m
+[31m               groupTitle: "Legislative",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m                 category: "Legislative"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Makan33.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Makan 33 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/RVtQTed.png",[39m
+[31m               url: "https://makan.media.kan.org.il/hls/live/2024680/2024680/master.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Makan 33 (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Now14.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Now 14 (720p)",[39m
+[31m               logo: "https://i.imgur.com/Iq2Kb69.png",[39m
+[31m               url: "https://now14.g-mana.live/media/91517161-44ab-4e46-af70-e9fe26117d2e/mainManifest.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Now 14 (720p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "RelevantTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Relevant TV (1080p)",[39m
+[31m               logo: "https://i.imgur.com/jCZ5gFO.png",[39m
+[31m               url: "https://6180c994cb835402.mediapackage.eu-west-1.amazonaws.com/out/v1/f1339272dd24416ca60b00e69075d783/index.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Relevant TV (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel13.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Reshet 13 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/eFM3bTq.png",[39m
+[31m               url: "https://d18b0e6mopany4.cloudfront.net/out/v1/08bc71cf0a0f4712b6b03c732b0e6d25/index.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Reshet 13 (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "ShelanuTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Shelanu TV (720p)",[39m
+[31m               logo: "https://i.imgur.com/UVz2Ojq.png",[39m
+[31m               url: "https://1247634592.rsc.cdn77.org/1247634592/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Shelanu TV (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             }[39m
+[31m           ],[39m
+[31m           skipDuplicates: true[39m
+[31m           ~~~~~~~~~~~~~~[39m
+[31m         })[39m
+
+[31mUnknown argument `skipDuplicates`. Available options are marked with ?.[39m
+2025-11-27 18:26:46:2646 [32minfo[39m: [32mStarting sync for source e8b970e2-d6e0-48df-b2dd-abdbd13a1598[39m
+2025-11-27 18:26:47:2647 [31merror[39m: [31mSync failed for source e8b970e2-d6e0-48df-b2dd-abdbd13a1598: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\ChannelRepository.ts:43:41[39m
+
+[31m  40 }[39m
+[31m  41 [39m
+[31m  42 async bulkCreate(channels: Omit<Channel, 'id' | 'createdAt'>[]): Promise<number> {[39m
+[31m→ 43     const result = await this.model.createMany({[39m
+[31m           data: [[39m
+[31m             {[39m
+[31m               tvgId: "AngelTV.in@Hebrew",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Angel TV Hebrew (720p)",[39m
+[31m               logo: "https://i.imgur.com/qKLEGU7.png",[39m
+[31m               url: "https://janya-digimix.akamaized.net/vglive-sk-150533/hebrew/ngrp:angelhebrew_all/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Angel TV Hebrew (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel9.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/pttM3KQ.png",[39m
+[31m               url: "http://50.7.231.221:8081/185/index.m3u8?wmsAuthSign=okad",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "HalaTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/028M4Ew.png",[39m
+[31m               url: "https://stream.panet.com/edge/halaTV/playlist.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Hidabroot.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hidabroot (1080p)",[39m
+[31m               logo: "https://i.imgur.com/CTH4Hu2.png",[39m
+[31m               url: "https://cdn.cybercdn.live/HidabrootIL/Live97/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hidabroot (1080p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSArabic.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News Arabic (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/95116e8d79524d87bf3ac20ba04241e3/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News Arabic (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSFrench.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News French (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/41814196d97e433fb401c5e632d985e9/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News French (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSHebrew.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "i24NEWS Hebrew",[39m
+[31m               logo: "https://www.i24news.tv/images/favicon.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/d89ede8094c741b7924120b27764153c/eu-central-1/5377161796001/profile_0/chunklist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "i24NEWS Hebrew",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "IsraelParsTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Israel Pars TV (540p)",[39m
+[31m               logo: "https://i.imgur.com/UM5Gf4L.png",[39m
+[31m               url: "https://live.pars-israel.com/iptv/stream.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Israel Pars TV (540p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KabbalahforthePeopleIsrael.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/VxAHOgr.png",[39m
+[31m               url: "https://edge3.uk.kab.tv/live/tv66-heb-high/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Kan11.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "KAN 11 Israel (1080p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Kan11Logo.svg/512px-Kan11Logo.svg.png",[39m
+[31m               url: "https://kan11w.media.kan.org.il/hls/live/2105694/2105694/master.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "KAN 11 Israel (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KanEducational.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kan Kids (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/KanHinuchit.svg/512px-KanHinuchit.svg.png",[39m
+[31m               url: "https://kan23.media.kan.org.il/hls/live/2024691/2024691/master.m3u8",[39m
+[31m               groupTitle: "Education",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kan Kids (720p)",[39m
+[31m                 category: "Education"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Keshet12.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/fY3eakc.png",[39m
+[31m               url: "https://mako-streaming.akamaized.net/stream/hls/live/2033791/k12n12wad/profile/1/hdntl=exp=1757445516~acl=/*~data=hdntl~hmac=a8baf01127ae46cd6fd241cf61db8590d7eacc3406f4735ed2defef329496b8a/profileManifest.m3u8?_did=6cfbfc673e5d5f7f274bf96b6c72f28ce1a53f82&_uid=0195a46a-9f11-4704-a944-301512682f7d&rK=bn",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KnessetChannel.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/QXB1jv8.png",[39m
+[31m               url: "https://contact.gostreaming.tv/Knesset/myStream/playlist.m3u8",[39m
+[31m               groupTitle: "Legislative",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m                 category: "Legislative"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Makan33.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Makan 33 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/RVtQTed.png",[39m
+[31m               url: "https://makan.media.kan.org.il/hls/live/2024680/2024680/master.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Makan 33 (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Now14.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Now 14 (720p)",[39m
+[31m               logo: "https://i.imgur.com/Iq2Kb69.png",[39m
+[31m               url: "https://now14.g-mana.live/media/91517161-44ab-4e46-af70-e9fe26117d2e/mainManifest.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Now 14 (720p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "RelevantTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Relevant TV (1080p)",[39m
+[31m               logo: "https://i.imgur.com/jCZ5gFO.png",[39m
+[31m               url: "https://6180c994cb835402.mediapackage.eu-west-1.amazonaws.com/out/v1/f1339272dd24416ca60b00e69075d783/index.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Relevant TV (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel13.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Reshet 13 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/eFM3bTq.png",[39m
+[31m               url: "https://d18b0e6mopany4.cloudfront.net/out/v1/08bc71cf0a0f4712b6b03c732b0e6d25/index.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Reshet 13 (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "ShelanuTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Shelanu TV (720p)",[39m
+[31m               logo: "https://i.imgur.com/UVz2Ojq.png",[39m
+[31m               url: "https://1247634592.rsc.cdn77.org/1247634592/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Shelanu TV (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             }[39m
+[31m           ],[39m
+[31m           skipDuplicates: true[39m
+[31m           ~~~~~~~~~~~~~~[39m
+[31m         })[39m
+
+[31mUnknown argument `skipDuplicates`. Available options are marked with ?.[39m
+2025-11-27 18:29:32:2932 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 18:30:27:3027 [32minfo[39m: [32mStarting sync for source 8528886f-23c4-4ea3-b695-d1e9b0f651f7[39m
+2025-11-27 18:30:28:3028 [31merror[39m: [31mSync failed for source 8528886f-23c4-4ea3-b695-d1e9b0f651f7: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\ChannelRepository.ts:43:41[39m
+
+[31m  40 }[39m
+[31m  41 [39m
+[31m  42 async bulkCreate(channels: Omit<Channel, 'id' | 'createdAt'>[]): Promise<number> {[39m
+[31m→ 43     const result = await this.model.createMany({[39m
+[31m           data: [[39m
+[31m             {[39m
+[31m               tvgId: "AngelTV.in@Hebrew",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Angel TV Hebrew (720p)",[39m
+[31m               logo: "https://i.imgur.com/qKLEGU7.png",[39m
+[31m               url: "https://janya-digimix.akamaized.net/vglive-sk-150533/hebrew/ngrp:angelhebrew_all/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Angel TV Hebrew (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel9.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/pttM3KQ.png",[39m
+[31m               url: "http://50.7.231.221:8081/185/index.m3u8?wmsAuthSign=okad",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Channel 9 (540p) [Not 24/7]",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "HalaTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/028M4Ew.png",[39m
+[31m               url: "https://stream.panet.com/edge/halaTV/playlist.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hala TV (1080p) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Hidabroot.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Hidabroot (1080p)",[39m
+[31m               logo: "https://i.imgur.com/CTH4Hu2.png",[39m
+[31m               url: "https://cdn.cybercdn.live/HidabrootIL/Live97/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Hidabroot (1080p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSArabic.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News Arabic (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/95116e8d79524d87bf3ac20ba04241e3/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News Arabic (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSFrench.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "I24 News French (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/LOGO_i24NEWS.png/512px-LOGO_i24NEWS.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/41814196d97e433fb401c5e632d985e9/eu-central-1/5377161796001/playlist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "I24 News French (720p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "i24NEWSHebrew.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "i24NEWS Hebrew",[39m
+[31m               logo: "https://www.i24news.tv/images/favicon.png",[39m
+[31m               url: "https://bcovlive-a.akamaihd.net/d89ede8094c741b7924120b27764153c/eu-central-1/5377161796001/profile_0/chunklist.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "i24NEWS Hebrew",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "IsraelParsTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Israel Pars TV (540p)",[39m
+[31m               logo: "https://i.imgur.com/UM5Gf4L.png",[39m
+[31m               url: "https://live.pars-israel.com/iptv/stream.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Israel Pars TV (540p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KabbalahforthePeopleIsrael.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/VxAHOgr.png",[39m
+[31m               url: "https://edge3.uk.kab.tv/live/tv66-heb-high/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kabbalah for the People (Israel) (504p) [Not 24/7]",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Kan11.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "KAN 11 Israel (1080p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Kan11Logo.svg/512px-Kan11Logo.svg.png",[39m
+[31m               url: "https://kan11w.media.kan.org.il/hls/live/2105694/2105694/master.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "KAN 11 Israel (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KanEducational.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Kan Kids (720p)",[39m
+[31m               logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/KanHinuchit.svg/512px-KanHinuchit.svg.png",[39m
+[31m               url: "https://kan23.media.kan.org.il/hls/live/2024691/2024691/master.m3u8",[39m
+[31m               groupTitle: "Education",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Kan Kids (720p)",[39m
+[31m                 category: "Education"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Keshet12.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/fY3eakc.png",[39m
+[31m               url: "https://mako-streaming.akamaized.net/stream/hls/live/2033791/k12n12wad/profile/1/hdntl=exp=1757445516~acl=/*~data=hdntl~hmac=a8baf01127ae46cd6fd241cf61db8590d7eacc3406f4735ed2defef329496b8a/profileManifest.m3u8?_did=6cfbfc673e5d5f7f274bf96b6c72f28ce1a53f82&_uid=0195a46a-9f11-4704-a944-301512682f7d&rK=bn",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Keshet 12 (1080i) [Not 24/7]",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "KnessetChannel.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m               logo: "https://i.imgur.com/QXB1jv8.png",[39m
+[31m               url: "https://contact.gostreaming.tv/Knesset/myStream/playlist.m3u8",[39m
+[31m               groupTitle: "Legislative",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Knesset Channel (480p) [Not 24/7]",[39m
+[31m                 category: "Legislative"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Makan33.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Makan 33 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/RVtQTed.png",[39m
+[31m               url: "https://makan.media.kan.org.il/hls/live/2024680/2024680/master.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Makan 33 (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Now14.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Now 14 (720p)",[39m
+[31m               logo: "https://i.imgur.com/Iq2Kb69.png",[39m
+[31m               url: "https://now14.g-mana.live/media/91517161-44ab-4e46-af70-e9fe26117d2e/mainManifest.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Now 14 (720p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "RelevantTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Relevant TV (1080p)",[39m
+[31m               logo: "https://i.imgur.com/jCZ5gFO.png",[39m
+[31m               url: "https://6180c994cb835402.mediapackage.eu-west-1.amazonaws.com/out/v1/f1339272dd24416ca60b00e69075d783/index.m3u8",[39m
+[31m               groupTitle: "News",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Relevant TV (1080p)",[39m
+[31m                 category: "News"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "Channel13.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Reshet 13 (1080p)",[39m
+[31m               logo: "https://i.imgur.com/eFM3bTq.png",[39m
+[31m               url: "https://d18b0e6mopany4.cloudfront.net/out/v1/08bc71cf0a0f4712b6b03c732b0e6d25/index.m3u8",[39m
+[31m               groupTitle: "General",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Reshet 13 (1080p)",[39m
+[31m                 category: "General"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             },[39m
+[31m             {[39m
+[31m               tvgId: "ShelanuTV.il@SD",[39m
+[31m               tvgName: "",[39m
+[31m               displayName: "Shelanu TV (720p)",[39m
+[31m               logo: "https://i.imgur.com/UVz2Ojq.png",[39m
+[31m               url: "https://1247634592.rsc.cdn77.org/1247634592/playlist.m3u8",[39m
+[31m               groupTitle: "Religious",[39m
+[31m               contentType: "LIVESTREAM",[39m
+[31m               metadata: {[39m
+[31m                 channelName: "Shelanu TV (720p)",[39m
+[31m                 category: "Religious"[39m
+[31m               },[39m
+[31m               profileId: "b8fa8db8-0f76-4fae-ac0d-3b2d6ec98d60"[39m
+[31m             }[39m
+[31m           ][39m
+[31m         })[39m
+
+[31mArgument `metadata`: Invalid value provided. Expected String, provided Object.[39m
+2025-11-27 18:31:31:3131 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 18:32:29:3229 [32minfo[39m: [32mStarting sync for source c03c4c6c-2bf9-4bba-81e7-84cea5c3613f[39m
+2025-11-27 18:32:30:3230 [32minfo[39m: [32mSync completed for source c03c4c6c-2bf9-4bba-81e7-84cea5c3613f in 336ms[39m
+2025-11-27 18:32:41:3241 [32minfo[39m: [32mStarting sync for source 3ee68c6d-0a4c-423e-a655-7830bc949235[39m
+2025-11-27 18:32:41:3241 [32minfo[39m: [32mSync completed for source 3ee68c6d-0a4c-423e-a655-7830bc949235 in 259ms[39m
+2025-11-27 18:42:02:422 [32minfo[39m: [32mStarting sync for source d0a61c82-fccf-4026-acff-68dafc2cee30[39m
+2025-11-27 18:42:04:424 [33mwarn[39m: [33mAttempt 1 failed for http://worldiptv.me:8080/get.php?username=jzuyzp1DuDmg&password=fbK5jwBQ5JFE&type=m3u_plus&output=ts: Request failed with status code 451[39m
+2025-11-27 18:42:09:429 [33mwarn[39m: [33mAttempt 2 failed for http://worldiptv.me:8080/get.php?username=jzuyzp1DuDmg&password=fbK5jwBQ5JFE&type=m3u_plus&output=ts: Request failed with status code 451[39m
+2025-11-27 18:42:15:4215 [33mwarn[39m: [33mAttempt 3 failed for http://worldiptv.me:8080/get.php?username=jzuyzp1DuDmg&password=fbK5jwBQ5JFE&type=m3u_plus&output=ts: Request failed with status code 451[39m
+2025-11-27 18:42:15:4215 [31merror[39m: [31mSync failed for source d0a61c82-fccf-4026-acff-68dafc2cee30: Failed to download M3U after 3 attempts: Request failed with status code 451[39m
+2025-11-27 18:44:07:447 [32minfo[39m: [32mStarting sync for source 12e45af2-c415-4583-9823-b815cb7bdbcc[39m
+2025-11-27 18:44:27:4427 [31merror[39m: [31mSync failed for source 12e45af2-c415-4583-9823-b815cb7bdbcc: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\ChannelRepository.ts:43:41[39m
+
+[31m  40 }[39m
+[31m  41 [39m
+[31m  42 async bulkCreate(channels: Omit<Channel, 'id' | 'createdAt'>[]): Promise<number> {[39m
+[31m→ 43     const result = await this.model.createMany([39m
+[31mTransaction API error: Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 5032 ms passed since the start of the transaction. Consider increasing the interactive transaction timeout or doing less work in the transaction.[39m
+2025-11-27 18:45:10:4510 [32minfo[39m: [32mStarting sync for source 12e45af2-c415-4583-9823-b815cb7bdbcc[39m
+2025-11-27 18:45:31:4531 [31merror[39m: [31mSync failed for source 12e45af2-c415-4583-9823-b815cb7bdbcc: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\ChannelRepository.ts:43:41[39m
+
+[31m  40 }[39m
+[31m  41 [39m
+[31m  42 async bulkCreate(channels: Omit<Channel, 'id' | 'createdAt'>[]): Promise<number> {[39m
+[31m→ 43     const result = await this.model.createMany([39m
+[31mTransaction API error: Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 5074 ms passed since the start of the transaction. Consider increasing the interactive transaction timeout or doing less work in the transaction.[39m
+2025-11-27 18:46:13:4613 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 18:46:26:4626 [32minfo[39m: [32mStarting sync for source 12e45af2-c415-4583-9823-b815cb7bdbcc[39m
+2025-11-27 18:46:45:4645 [31merror[39m: [31mSync failed for source 12e45af2-c415-4583-9823-b815cb7bdbcc: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\ChannelRepository.ts:43:41[39m
+
+[31m  40 }[39m
+[31m  41 [39m
+[31m  42 async bulkCreate(channels: Omit<Channel, 'id' | 'createdAt'>[]): Promise<number> {[39m
+[31m→ 43     const result = await this.model.createMany([39m
+[31mTransaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn't have information about anymore, or was obtained before disconnecting.[39m
+2025-11-27 18:49:19:4919 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 18:51:18:5118 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 18:52:02:522 [32minfo[39m: [32mStarting sync for source 12e45af2-c415-4583-9823-b815cb7bdbcc[39m
+2025-11-27 18:53:07:537 [31merror[39m: [31mSync failed for source 12e45af2-c415-4583-9823-b815cb7bdbcc: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\EpisodeRepository.ts:71:49[39m
+
+[31m  68 const newEpisodes = seriesEpisodes.filter(e => !existingSet.has(`${e.seasonNumber}-${e.episodeNumber}`));[39m
+[31m  69 [39m
+[31m  70 if (newEpisodes.length > 0) {[39m
+[31m→ 71     const result = await this.model.createMany([39m
+[31mUnique constraint failed on the fields: (`seriesId`,`seasonNumber`,`episodeNumber`)[39m
+2025-11-27 20:49:34:4934 [32minfo[39m: [32mStarting sync for source 12e45af2-c415-4583-9823-b815cb7bdbcc[39m
+2025-11-27 20:50:46:5046 [31merror[39m: [31mSync failed for source 12e45af2-c415-4583-9823-b815cb7bdbcc: [39m
+[31mInvalid `this.model.createMany()` invocation in[39m
+[31mC:\Users\roial\Documents\Fun-Repos\IPTV-APP-V2\backend\src\repositories\EpisodeRepository.ts:71:49[39m
+
+[31m  68 const newEpisodes = seriesEpisodes.filter(e => !existingSet.has(`${e.seasonNumber}-${e.episodeNumber}`));[39m
+[31m  69 [39m
+[31m  70 if (newEpisodes.length > 0) {[39m
+[31m→ 71     const result = await this.model.createMany([39m
+[31mUnique constraint failed on the fields: (`seriesId`,`seasonNumber`,`episodeNumber`)[39m
+2025-11-27 20:51:32:5132 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 20:51:45:5145 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 20:52:11:5211 [31merror[39m: [31mFailed to start server: [39m
+[31mInvalid `prisma.$executeRawUnsafe()` invocation:[39m
+
+
+[31mRaw query failed. Code: `N/A`. Message: `Execute returned results, which is not allowed in SQLite.`[39m
+2025-11-27 20:58:40:5840 [32minfo[39m: [32mSQLite WAL mode enabled[39m
+2025-11-27 20:58:40:5840 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
+2025-11-27 20:59:09:599 [32minfo[39m: [32mStarting sync for source 12e45af2-c415-4583-9823-b815cb7bdbcc[39m
+2025-11-27 21:00:17:017 [32minfo[39m: [32mSync completed for source 12e45af2-c415-4583-9823-b815cb7bdbcc in 67471ms[39m
+2025-11-27 21:28:35:2835 [32minfo[39m: [32mSQLite WAL mode enabled[39m
+2025-11-27 21:28:35:2835 [32minfo[39m: [32mServer running on port 3000 in development mode[39m
