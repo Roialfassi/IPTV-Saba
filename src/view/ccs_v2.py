@@ -30,9 +30,12 @@ logger = logging.getLogger(__name__)
 APP_ICON_PATH = ":/assets/app_icon.png"  # Change to your app logo if you have one
 
 class LoaderWorker(QObject):
+    """Worker thread for loading IPTV data without blocking the UI"""
     finished = pyqtSignal()
-    progress = pyqtSignal(int)
+    progress = pyqtSignal(int)  # Progress percentage (0-100)
+    progress_message = pyqtSignal(str)  # Status message
     error = pyqtSignal(str)
+    
     def __init__(self, controller: Controller):
         super().__init__()
         self.controller = controller
@@ -41,32 +44,51 @@ class LoaderWorker(QObject):
         self.active_profile = controller.active_profile
         self.config_dir = controller.config_dir
 
+    def _progress_callback(self, current: int, total: int, message: str):
+        """Callback for DataLoader progress updates"""
+        if total > 0:
+            percent = int((current / total) * 100)
+            self.progress.emit(percent)
+        self.progress_message.emit(message)
+
     def run(self):
         try:
             data_path = Path(os.path.join(self.config_dir, (self.active_profile.name + "data.json")))
             if self.active_profile.is_within_24_hours() and data_path.is_file():
                 logger.info("Loading Data from file since last login was recently")
+                self.progress_message.emit("Loading from cache...")
                 self.loader.load_from_json(data_path)
             else:
-                success = self.loader.load(self.source)
+                self.progress_message.emit("Downloading playlist...")
+                success = self.loader.load(
+                    self.source,
+                    progress_callback=self._progress_callback
+                )
                 if not success:
-                    self.error.emit("Failed to load IPTV data")
+                    self.error.emit("Failed to load IPTV data from URL")
+                    self.progress_message.emit("Falling back to cached data...")
                     self.loader.load_from_json(data_path)
                 else:
+                    self.progress_message.emit("Saving to cache...")
                     self.loader.save_to_json(data_path)
                     self.controller.active_profile.update_last_loaded()
                     self.controller.profile_manager.update_profile(self.controller.active_profile)
                     self.controller.profile_manager.export_profiles(self.controller.profile_path)
+            
+            self.progress_message.emit("Loading complete!")
             self.finished.emit()
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            logger.error(f"{exc_type.__name__} in {fname} line {exc_tb.tb_lineno}: {e}")
             self.error.emit(f"Error loading IPTV data: {str(e)}")
             self.finished.emit()
 
 
 class LoadingOverlay(QWidget):
+    # Unicode spinner characters for animation
+    SPINNER_CHARS = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -75,10 +97,11 @@ class LoadingOverlay(QWidget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
 
-        # Animated spinner (Unicode or use QMovie GIF for even fancier effect)
-        self.spinner_label = QLabel("⏳")
+        # Animated spinner (Unicode character cycling)
+        self.spinner_index = 0
+        self.spinner_label = QLabel(self.SPINNER_CHARS[0])
         self.spinner_label.setAlignment(Qt.AlignCenter)
-        self.spinner_label.setStyleSheet("font-size: 90px; color: #E50914; text-shadow: 0 1px 6px #222;")
+        self.spinner_label.setStyleSheet("font-size: 90px; color: #E50914;")
         layout.addWidget(self.spinner_label)
 
         self.text_label = QLabel("Loading channels...")
@@ -86,21 +109,16 @@ class LoadingOverlay(QWidget):
         self.text_label.setStyleSheet("font-size: 24px; color: white; margin-top: 20px;")
         layout.addWidget(self.text_label)
 
-        # Spinner rotation animation
-        self.angle = 0
+        # Spinner animation timer
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.rotate_spinner)
-        self.timer.start(50)
+        self.timer.start(80)  # 80ms for smooth animation
         self.hide()
 
     def rotate_spinner(self):
-        self.angle = (self.angle + 10) % 360
-        # You can swap with a GIF spinner for more beauty if wanted
-        # self.spinner_label.setPixmap(QPixmap(":/assets/spinner.gif")) # Add if you have
-        self.spinner_label.setStyleSheet(f"""
-            font-size: 90px; color: #E50914;
-            transform: rotate({self.angle}deg);
-        """)
+        """Animate the spinner by cycling through characters"""
+        self.spinner_index = (self.spinner_index + 1) % len(self.SPINNER_CHARS)
+        self.spinner_label.setText(self.SPINNER_CHARS[self.spinner_index])
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -327,6 +345,7 @@ class ChooseChannelScreen(QWidget):
         self.controller.error_occurred.connect(self.show_error)
 
     def load_playlist_with_progress(self):
+        """Start loading the playlist with progress indicators"""
         self.loading_overlay.resize(self.size())
         self.loading_overlay.show()
         self.thread = QThread()
@@ -338,6 +357,10 @@ class ChooseChannelScreen(QWidget):
         self.thread.finished.connect(self.thread.deleteLater)
         self.thread.finished.connect(self.on_loading_finished)
         self.worker.error.connect(self.show_error)
+        
+        # Connect progress message to update loading overlay text
+        self.worker.progress_message.connect(self.loading_overlay.update_text)
+        
         self.thread.start()
 
     def on_loading_finished(self):

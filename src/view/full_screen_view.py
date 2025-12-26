@@ -7,6 +7,12 @@ import vlc
 
 from src.model.channel_model import Channel
 
+# Import SharedPlayerManager for potential direct usage
+try:
+    from src.services.shared_player_manager import get_shared_player
+except ImportError:
+    get_shared_player = None
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -31,11 +37,13 @@ class FullScreenView(QWidget):
             self.vlc_instance = existing_instance
             self.player = existing_player
             self.is_playing = True  # Already playing
-            logger.info("Reusing existing VLC player instance (avoiding dual stream)")
+            self.using_shared_player = True  # Track that we're using shared player
+            logger.info("Reusing existing VLC player instance (seamless transition)")
         else:
             self.vlc_instance = vlc.Instance()
             self.player = self.vlc_instance.media_player_new()
             self.is_playing = False
+            self.using_shared_player = False
             logger.info("Created new VLC player instance")
 
         self.is_muted = False
@@ -151,7 +159,11 @@ class FullScreenView(QWidget):
 
         try:
             win_id = int(self.video_frame.winId())
-            logger.info(f"Attempting to attach player to window ID: {win_id}")
+            logger.info(f"FullScreenView: Attempting to attach player to window ID: {win_id}")
+            
+            # Check if player was playing before attachment
+            was_playing = self.player.is_playing()
+            logger.info(f"FullScreenView: Player was_playing={was_playing}")
 
             if sys.platform.startswith('linux'):
                 self.player.set_xwindow(win_id)
@@ -164,38 +176,67 @@ class FullScreenView(QWidget):
                 logger.info(f"✓ Attached player to macOS NSObject: {win_id}")
             else:
                 logger.error(f"Unsupported platform: {sys.platform}")
+                return
 
-            # CRITICAL: Force player to refresh video output after attaching to new window
-            # The player is already playing but needs to re-render to the new window
-            if self.player.is_playing():
-                logger.info("Player is playing - forcing video refresh")
-                # Get current position to restore after
-                current_pos = self.player.get_position()
-                # Pause and immediately play to force re-render
-                self.player.pause()
-                QTimer.singleShot(50, lambda: self.player.play())
-                # Restore position if we were not at the beginning
-                if current_pos > 0.0:
-                    QTimer.singleShot(100, lambda: self.player.set_position(current_pos))
-                logger.info("Video refresh triggered")
-            else:
-                logger.warning("Player is not playing - starting playback")
-                self.player.play()
+            # CRITICAL: Force video to refresh after window change
+            # Need to give the player time to recognize the new window
+            QTimer.singleShot(150, self._refresh_video_after_attach)
 
         except Exception as e:
             logger.error(f"Error attaching player to window: {e}")
             import traceback
             traceback.print_exc()
+    
+    def _refresh_video_after_attach(self):
+        """Force the video to refresh after attaching to new window."""
+        try:
+            if not self.player:
+                return
+                
+            logger.info(f"FullScreenView: Refreshing video. is_playing={self.player.is_playing()}")
+            
+            if self.player.is_playing():
+                # Save position
+                current_pos = self.player.get_position()
+                logger.info(f"FullScreenView: Current position before refresh: {current_pos}")
+                
+                # The trick: pause briefly, then resume to force re-render to new window
+                self.player.pause()
+                
+                def resume_playback():
+                    if self.player:
+                        self.player.play()
+                        logger.info("FullScreenView: Resumed playback after refresh")
+                        # Restore position if needed
+                        if current_pos and current_pos > 0.0:
+                            QTimer.singleShot(50, lambda: self.player.set_position(current_pos))
+                
+                QTimer.singleShot(100, resume_playback)
+            else:
+                # Player wasn't playing, start it
+                logger.info("FullScreenView: Player not playing - starting playback")
+                self.player.play()
+                
+        except Exception as e:
+            logger.error(f"Error refreshing video: {e}")
 
     def showEvent(self, event):
         """
         Called when the widget is shown.
-        This is the right time to attach the player - window is ready and has valid ID.
+        
+        If using shared player (state machine), don't attach here - the 
+        SharedPlayerManager handles the transition. Only attach if we 
+        created our own player.
         """
         super().showEvent(event)
-        logger.info("FullScreenView showEvent triggered - attaching player now")
-        # Small delay to ensure window is fully ready
-        QTimer.singleShot(100, self.attach_player_to_window)
+        
+        if self.using_shared_player:
+            # SharedPlayerManager's state machine handles attachment
+            logger.info("FullScreenView showEvent - using shared player (state machine handles attachment)")
+        else:
+            # We created our own player, need to attach it
+            logger.info("FullScreenView showEvent - own player, scheduling attachment")
+            QTimer.singleShot(200, self.attach_player_to_window)
 
     def play_channel(self):
         """
@@ -263,8 +304,20 @@ class FullScreenView(QWidget):
     def closeEvent(self, event):
         """
         Handle window close event.
-        NOTE: We don't stop the player here since it's shared with ChooseChannelScreen.
+        
+        If using shared player, don't stop or release - the ChooseChannelScreen
+        will continue using it. Only cleanup if we created our own player.
         """
+        if not self.using_shared_player and self.player:
+            # We created our own player, so we should clean it up
+            self.player.stop()
+            self.player.release()
+            if self.vlc_instance:
+                self.vlc_instance.release()
+            logger.info("Cleaned up local VLC player instance")
+        else:
+            logger.info("Using shared player - skipping cleanup (player continues in channel browser)")
+        
         event.accept()
 
     def mouseMoveEvent(self, event):

@@ -8,6 +8,7 @@ from src.model.profile import create_mock_profile
 from src.view.easy_mode_screen import EasyModeScreen
 from src.view.login_view import LoginScreen
 from src.view.choose_channel_screen import ChooseChannelScreen
+from src.services.shared_player_manager import SharedPlayerManager
 
 
 class IPTVApp:
@@ -18,6 +19,16 @@ class IPTVApp:
         self.choose_channel_screen = None
         self.easy_mode_screen = None
         # self.controller.error_occurred.connect(self.handle_error)
+        
+        # Connect app aboutToQuit signal to cleanup shared player
+        self.app.aboutToQuit.connect(self.cleanup)
+
+    def cleanup(self):
+        """Cleanup shared resources when app is closing."""
+        try:
+            SharedPlayerManager.reset_instance()
+        except Exception as e:
+            print(f"Error cleaning up SharedPlayerManager: {e}")
 
     def transition_to_login_screen(self):
         if self.choose_channel_screen:

@@ -19,6 +19,7 @@ from src.model.channel_model import Channel  # for type hints
 from src.model.profile import create_mock_profile, Profile
 from src.view.full_screen_view import FullScreenView
 from src.services.download_record_manager import DownloadRecordManager
+from src.services.shared_player_manager import SharedPlayerManager, get_shared_player
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -28,7 +29,8 @@ logger = logging.getLogger(__name__)
 class LoaderWorker(QObject):
     """Worker thread for loading IPTV data without blocking the UI"""
     finished = pyqtSignal()
-    progress = pyqtSignal(int)
+    progress = pyqtSignal(int)  # Progress percentage (0-100)
+    progress_message = pyqtSignal(str)  # Status message
     error = pyqtSignal(str)
 
     def __init__(self, controller: Controller):
@@ -39,37 +41,55 @@ class LoaderWorker(QObject):
         self.active_profile = controller.active_profile
         self.config_dir = controller.config_dir
 
+    def _progress_callback(self, current: int, total: int, message: str):
+        """Callback for DataLoader progress updates"""
+        if total > 0:
+            percent = int((current / total) * 100)
+            self.progress.emit(percent)
+        self.progress_message.emit(message)
+
     def run(self):
         try:
             data_path = Path(os.path.join(self.config_dir, (self.active_profile.name + "data.json")))
             # load from File
-            print(type(self.active_profile))
             if self.active_profile.is_within_24_hours() is True and data_path.is_file():
                 logger.info("Loading Data from file since last login was recently")
+                self.progress_message.emit("Loading from cache...")
                 self.loader.load_from_json(data_path)
             else:
-                success = self.loader.load(self.source)
+                self.progress_message.emit("Downloading playlist...")
+                success = self.loader.load(
+                    self.source,
+                    progress_callback=self._progress_callback
+                )
                 if not success:
-                    self.error.emit("Failed to load IPTV data")
-                    logger.info("Loading Data from file since last login was recently")
+                    self.error.emit("Failed to load IPTV data from URL")
+                    self.progress_message.emit("Falling back to cached data...")
+                    logger.info("Loading Data from file as fallback")
                     self.loader.load_from_json(data_path)
                 else:
+                    self.progress_message.emit("Saving to cache...")
                     self.loader.save_to_json(data_path)
                     self.controller.active_profile.update_last_loaded()
                     self.controller.profile_manager.update_profile(self.controller.active_profile)
                     self.controller.profile_manager.export_profiles(self.controller.profile_path)
+            
+            self.progress_message.emit("Loading complete!")
             self.finished.emit()
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            logger.error(f"{exc_type.__name__} in {fname} line {exc_tb.tb_lineno}: {e}")
             self.error.emit(f"Error loading IPTV data: {str(e)}")
             self.finished.emit()
 
 
 class LoadingOverlay(QWidget):
     """Custom overlay widget with loading animation"""
+    
+    # Unicode spinner characters for animation
+    SPINNER_CHARS = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -85,8 +105,9 @@ class LoadingOverlay(QWidget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
 
-        # Loading spinner animation (use Unicode character for simplicity)
-        self.spinner_label = QLabel("⟳")
+        # Loading spinner animation (use Unicode character cycling)
+        self.spinner_index = 0
+        self.spinner_label = QLabel(self.SPINNER_CHARS[0])
         self.spinner_label.setAlignment(Qt.AlignCenter)
         self.spinner_label.setStyleSheet("""
             font-size: 70px;
@@ -104,23 +125,18 @@ class LoadingOverlay(QWidget):
         """)
         layout.addWidget(self.text_label)
 
-        # Start rotation animation
-        self.angle = 0
+        # Start spinner animation
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.rotate_spinner)
-        self.timer.start(30)  # Update every 30ms for smooth animation
+        self.timer.start(80)  # Update every 80ms for smooth animation
 
         # Initially hidden
         self.hide()
 
     def rotate_spinner(self):
-        """Rotate the spinner character"""
-        self.angle = (self.angle + 5) % 360
-        self.spinner_label.setStyleSheet(f"""
-            font-size: 70px;
-            color: #E50914;
-            transform: rotate({self.angle}deg);
-        """)
+        """Animate the spinner by cycling through characters"""
+        self.spinner_index = (self.spinner_index + 1) % len(self.SPINNER_CHARS)
+        self.spinner_label.setText(self.SPINNER_CHARS[self.spinner_index])
 
     def showEvent(self, event):
         """Handle show event"""
@@ -329,11 +345,13 @@ class ChooseChannelScreen(QWidget):
         self.video_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         right_layout.addWidget(self.video_frame)
 
-        # Initialize VLC player
-        vlc_plugins_path = r'C:\Program Files\VideoLAN\VLC\plugins'  # Update if needed
-        args = ['--no-plugins-cache', '--plugin-path=' + vlc_plugins_path]
-        self.instance = vlc.Instance(args)
-        self.player = self.instance.media_player_new()
+        # Use shared player manager for seamless transitions
+        self.shared_player = get_shared_player()
+        # Register this screen's video frame with the shared player
+        self.shared_player.register_embedded_frame(self.video_frame)
+        # Keep references for backward compatibility
+        self.player = self.shared_player.player
+        self.instance = self.shared_player.vlc_instance
 
         # Playback Controls Layout
         controls_layout = QHBoxLayout()
@@ -351,7 +369,8 @@ class ChooseChannelScreen(QWidget):
         volume_layout.addWidget(volume_label)
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(50)
+        # Sync with shared player's volume
+        self.volume_slider.setValue(self.shared_player.volume)
         volume_layout.addWidget(self.volume_slider)
         controls_layout.addLayout(volume_layout)
         right_layout.addLayout(controls_layout)
@@ -401,8 +420,8 @@ class ChooseChannelScreen(QWidget):
         self.controller.error_occurred.connect(self.show_error)
 
     def load_playlist_with_progress(self):
+        """Start loading the playlist with progress indicators"""
         try:
-            """Start loading the playlist with progress indicators"""
             # Show loading overlay
             self.loading_overlay.resize(self.size())
             self.loading_overlay.show()
@@ -419,11 +438,14 @@ class ChooseChannelScreen(QWidget):
             self.thread.finished.connect(self.thread.deleteLater)
             self.thread.finished.connect(self.on_loading_finished)
             self.worker.error.connect(self.show_error)
+            
+            # Connect progress message to update loading overlay text
+            self.worker.progress_message.connect(self.loading_overlay.update_text)
 
             # Start the thread
             self.thread.start()
         except Exception as e:
-            print(e)
+            logger.error(f"Failed to start loading: {e}")
             self.show_error(f"Failed to start loading: {str(e)}")
 
 
@@ -483,35 +505,42 @@ class ChooseChannelScreen(QWidget):
             channel_name = selected_item.text()
             channel = self.controller.find_channel_by_name(channel_name)
             if channel and channel.stream_url:
-                self.play_stream(channel.stream_url)
+                self.play_channel_stream(channel)
                 self.add_to_history(channel)
                 self.active_channel = channel
             else:
                 QMessageBox.critical(self, "Stream Error", "Selected channel does not have a valid stream URL.")
 
+    def play_channel_stream(self, channel):
+        """
+        Plays the given channel using the shared player manager.
+
+        Args:
+            channel: The channel object to play.
+        """
+        try:
+            # Use shared player manager to play the channel
+            success = self.shared_player.play_channel(channel, self.video_frame)
+            if not success:
+                QMessageBox.critical(self, "Playback Error", "Failed to start playback")
+        except Exception as e:
+            QMessageBox.critical(self, "Playback Error", f"An error occurred while trying to play the stream:\n{e}")
+
     def play_stream(self, stream_url):
         """
         Plays the given stream URL in the video player.
+        Legacy method for backward compatibility.
 
         Args:
             stream_url (str): The URL of the stream to play.
         """
-        try:
-            if sys.platform.startswith('linux'):  # for Linux using the X Server
-                self.player.set_xwindow(self.video_frame.winId())
-            elif sys.platform == "win32":  # for Windows
-                self.player.set_hwnd(self.video_frame.winId())
-            elif sys.platform == "darwin":  # for MacOS
-                self.player.set_nsobject(int(self.video_frame.winId()))
-            else:
-                QMessageBox.critical(self, "Platform Error", "Unsupported platform for video playback.")
-                return
-
-            media = self.instance.media_new(stream_url)
-            self.player.set_media(media)
-            self.player.play()
-        except Exception as e:
-            QMessageBox.critical(self, "Playback Error", f"An error occurred while trying to play the stream:\n{e}")
+        # Create a simple channel-like object for legacy compatibility
+        class SimpleChannel:
+            def __init__(self, url):
+                self.stream_url = url
+                self.name = "Stream"
+        
+        self.play_channel_stream(SimpleChannel(stream_url))
 
     def play_channel(self):
         """
@@ -828,109 +857,105 @@ class ChooseChannelScreen(QWidget):
 
     def attach_player_to_window(self):
         """
-        Attach the VLC player to the video frame window using platform-specific methods.
+        Attach the VLC player to the video frame window.
+        
+        Uses the SharedPlayerManager to handle platform-specific attachment.
         """
-        if not hasattr(self, 'player') or not self.player:
+        if not hasattr(self, 'shared_player') or not self.shared_player:
             return
 
         if not hasattr(self, 'video_frame'):
             return
 
         try:
-            if sys.platform.startswith('linux'):
-                self.player.set_xwindow(int(self.video_frame.winId()))
-                logger.info(f"Attached player to Linux window: {self.video_frame.winId()}")
-            elif sys.platform == "win32":
-                self.player.set_hwnd(int(self.video_frame.winId()))
-                logger.info(f"Attached player to Windows window: {self.video_frame.winId()}")
-            elif sys.platform == "darwin":
-                self.player.set_nsobject(int(self.video_frame.winId()))
-                logger.info(f"Attached player to Mac window: {self.video_frame.winId()}")
-
-            # Force player to refresh video output after reattaching
-            if self.player.is_playing():
-                logger.info("Player is playing - forcing video refresh on main window")
-                current_pos = self.player.get_position()
-                self.player.pause()
-                QTimer.singleShot(50, lambda: self.player.play())
-                if current_pos > 0.0:
-                    QTimer.singleShot(100, lambda: self.player.set_position(current_pos))
-            else:
-                logger.warning("Player not playing - starting playback")
-                self.player.play()
-
+            self.shared_player.attach_to_frame(self.video_frame)
+            logger.info("Attached shared player to embedded video frame")
         except Exception as e:
             logger.error(f"Error attaching player to window: {e}")
 
     def showEvent(self, event):
         """
-        Called when the widget is shown. Reattach the player to ensure video continues.
+        Called when the widget is shown.
+        
+        Note: State machine handles player attachment during transitions,
+        so we don't need to manually reattach here.
         """
         super().showEvent(event)
-        # Reattach player when returning from fullscreen (with small delay)
-        if hasattr(self, 'player') and self.player:
-            logger.info("ChooseChannelScreen showEvent triggered - reattaching player")
-            QTimer.singleShot(100, self.attach_player_to_window)
+        logger.info("ChooseChannelScreen showEvent triggered")
 
     def closeEvent(self, event):
         """
-        Ensures that the VLC player is properly released when the widget is closed.
+        Ensures that resources are properly released when the widget is closed.
         """
         # Clean up all downloads and recordings
         if hasattr(self, 'download_manager'):
             self.download_manager.cleanup_all()
 
-        if self.player:
-            self.player.stop()
-            self.player.release()
-        if self.instance:
-            self.instance.release()
+        # Stop playback but don't release the shared player
+        # (other views may still use it, and app closing will trigger cleanup)
+        if hasattr(self, 'shared_player') and self.shared_player:
+            self.shared_player.stop()
+        
         event.accept()
 
     def open_fullscreen_view(self, channel: Channel):
         """
-        Open fullscreen view. Stop current player and let fullscreen create its own.
-        This matches the working pattern from the test code.
+        Open fullscreen view with state machine managed transition.
+        
+        Uses the SharedPlayerManager's state machine to properly handle
+        the transition:
+        1. Create fullscreen view with video frame
+        2. Let state machine handle player stop/reattach/restart
         """
-        # Stop the player in this window
-        if hasattr(self, 'player') and self.player:
-            logger.info("Stopping player before fullscreen")
-            self.player.stop()
-
-        # Create fullscreen view WITHOUT passing player (let it create its own)
-        # This matches the test code pattern that works
-        self.fullscreen_view = FullScreenView(channel)
+        logger.info(f"=== Opening fullscreen for {channel.name} ===")
+        
+        # Create fullscreen view (simplified - just provides video frame)
+        self.fullscreen_view = FullScreenView(
+            channel,
+            existing_player=self.shared_player.player,
+            existing_instance=self.shared_player.vlc_instance
+        )
         self.fullscreen_view.go_back_signal.connect(self.on_fullscreen_view_closed)
 
-        # Show fullscreen
+        # Show fullscreen first so the video_frame has a valid window ID
         self.fullscreen_view.showFullScreen()
-
+        
+        # Use state machine to handle the transition
+        # This will stop current playback, attach to new window, and restart
+        QTimer.singleShot(150, lambda: self._complete_fullscreen_entry())
+        
         # Hide this window
         self.hide()
 
-        logger.info("Opened fullscreen view with new player instance")
+    def _complete_fullscreen_entry(self):
+        """Complete the fullscreen entry after the window is shown."""
+        if self.fullscreen_view and hasattr(self.fullscreen_view, 'video_frame'):
+            logger.info("Completing fullscreen entry via state machine")
+            self.shared_player.transition_to_fullscreen(self.fullscreen_view.video_frame)
+        else:
+            logger.error("Fullscreen view or video_frame not available")
 
     def on_fullscreen_view_closed(self):
         """
         Handle returning from fullscreen view.
-        Restart playback of the channel that was playing.
+        
+        Uses state machine to transition back to embedded view.
         """
-        # Close and cleanup fullscreen view
+        logger.info("=== Returning from fullscreen ===")
+        
+        # Show this window first (so video_frame has valid window ID)
+        self.show()
+        
+        # Close fullscreen view
         if self.fullscreen_view:
             self.fullscreen_view.close()
             self.fullscreen_view = None
+        
+        # Use state machine to handle transition back
+        # This will stop current playback, attach to embedded window, and restart
+        QTimer.singleShot(150, lambda: self.shared_player.transition_to_embedded())
 
-        # Show this window
-        self.show()
-
-        # Restart the channel that was playing
-        if self.active_channel:
-            logger.info(f"Restarting playback of {self.active_channel.name}")
-            self.play_stream(self.active_channel.stream_url)
-        else:
-            logger.info("No active channel to restart")
-
-        logger.info("Returned from fullscreen view")
+        logger.info("Fullscreen view closed, transition initiated")
 
     @pyqtSlot()
     def logout(self):
