@@ -47,6 +47,12 @@ class SharedPlayerManager(QObject):
     playback_started = pyqtSignal()
     playback_stopped = pyqtSignal()
     error_occurred = pyqtSignal(str)
+    stream_error = pyqtSignal(str)  # Emitted on VLC stream errors
+    connection_timeout = pyqtSignal(str)  # Emitted when stream fails to connect
+    buffering = pyqtSignal(int)  # Emitted during buffering with percentage
+    
+    # Connection timeout in seconds
+    CONNECTION_TIMEOUT = 15
     
     def __new__(cls, *args, **kwargs):
         """Ensure only one instance exists (Singleton pattern)."""
@@ -88,8 +94,15 @@ class SharedPlayerManager(QObject):
         # Set initial volume
         self._player.audio_set_volume(self._volume)
         
+        # Connection timeout tracking
+        self._connection_timer: Optional[QTimer] = None
+        self._is_connecting: bool = False
+        
+        # Setup VLC event callbacks
+        self._setup_vlc_events()
+        
         self._initialized = True
-        logger.info("SharedPlayerManager initialized with state machine")
+        logger.info("SharedPlayerManager initialized with state machine and event callbacks")
     
     def _get_vlc_args(self) -> list:
         """Get platform-specific VLC arguments."""
@@ -158,6 +171,117 @@ class SharedPlayerManager(QObject):
         self._state = new_state
         logger.info(f"State transition: {old_state.name} -> {new_state.name}")
         self.state_changed.emit(new_state)
+    
+    # ========================= VLC Event Callbacks =========================
+    
+    def _setup_vlc_events(self):
+        """
+        Setup VLC event callbacks for error handling and state monitoring.
+        
+        These callbacks help detect:
+        - Stream errors (network issues, invalid streams)
+        - Buffering status
+        - Playback state changes
+        """
+        event_manager = self._player.event_manager()
+        
+        # Playback events
+        event_manager.event_attach(vlc.EventType.MediaPlayerPlaying, self._on_playing)
+        event_manager.event_attach(vlc.EventType.MediaPlayerPaused, self._on_paused)
+        event_manager.event_attach(vlc.EventType.MediaPlayerStopped, self._on_stopped)
+        event_manager.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_end_reached)
+        
+        # Error events
+        event_manager.event_attach(vlc.EventType.MediaPlayerEncounteredError, self._on_error)
+        
+        # Buffering events
+        event_manager.event_attach(vlc.EventType.MediaPlayerBuffering, self._on_buffering)
+        
+        # Opening event (for connection tracking)
+        event_manager.event_attach(vlc.EventType.MediaPlayerOpening, self._on_opening)
+        
+        logger.info("VLC event callbacks registered")
+    
+    def _on_playing(self, event):
+        """Called when playback starts."""
+        logger.info("VLC Event: Playing")
+        self._is_connecting = False
+        self._cancel_connection_timer()
+    
+    def _on_paused(self, event):
+        """Called when playback is paused."""
+        logger.debug("VLC Event: Paused")
+    
+    def _on_stopped(self, event):
+        """Called when playback is stopped."""
+        logger.debug("VLC Event: Stopped")
+        self._is_connecting = False
+        self._cancel_connection_timer()
+    
+    def _on_end_reached(self, event):
+        """Called when stream ends."""
+        logger.info("VLC Event: End reached")
+        self._is_connecting = False
+        self._cancel_connection_timer()
+    
+    def _on_error(self, event):
+        """Called when VLC encounters an error."""
+        logger.error("VLC Event: Error encountered")
+        self._is_connecting = False
+        self._cancel_connection_timer()
+        
+        channel_name = self._current_channel.name if self._current_channel else "Unknown"
+        error_msg = f"Stream error for '{channel_name}'. The stream may be offline or unavailable."
+        self.stream_error.emit(error_msg)
+    
+    def _on_buffering(self, event):
+        """Called during buffering with percentage."""
+        # event.u.new_cache is the buffering percentage (0-100)
+        try:
+            percentage = int(event.u.new_cache)
+            if percentage < 100:
+                logger.debug(f"VLC Event: Buffering {percentage}%")
+            self.buffering.emit(percentage)
+        except Exception:
+            pass
+    
+    def _on_opening(self, event):
+        """Called when VLC starts opening a stream."""
+        logger.info("VLC Event: Opening stream")
+        self._is_connecting = True
+        self._start_connection_timer()
+    
+    def _start_connection_timer(self):
+        """Start a timer to detect connection timeouts."""
+        self._cancel_connection_timer()
+        
+        self._connection_timer = QTimer()
+        self._connection_timer.setSingleShot(True)
+        self._connection_timer.timeout.connect(self._on_connection_timeout)
+        self._connection_timer.start(self.CONNECTION_TIMEOUT * 1000)
+        logger.debug(f"Connection timer started ({self.CONNECTION_TIMEOUT}s)")
+    
+    def _cancel_connection_timer(self):
+        """Cancel the connection timeout timer."""
+        if self._connection_timer:
+            self._connection_timer.stop()
+            self._connection_timer = None
+    
+    def _on_connection_timeout(self):
+        """Called when connection times out."""
+        if self._is_connecting:
+            logger.warning("Connection timeout - stream failed to connect")
+            self._is_connecting = False
+            
+            channel_name = self._current_channel.name if self._current_channel else "Unknown"
+            timeout_msg = f"Connection timeout for '{channel_name}'. The stream may be offline or your connection is slow."
+            self.connection_timeout.emit(timeout_msg)
+            
+            # Stop the player after timeout
+            try:
+                self._player.stop()
+            except Exception:
+                pass
     
     # ========================= Frame Registration =========================
     
@@ -270,8 +394,72 @@ class SharedPlayerManager(QObject):
         self._player.pause()
     
     def stop(self):
-        """Stop playback."""
-        self._player.stop()
+        """
+        Stop playback safely.
+        
+        Uses pause-first approach to avoid VLC threading crashes.
+        """
+        logger.info("Stopping playback")
+        self._cancel_connection_timer()
+        self._is_connecting = False
+        
+        try:
+            if self._player and self._player.is_playing():
+                # Pause first to avoid VLC crashes
+                self._player.set_pause(1)
+            
+            # Small delay then stop (if not transitioning)
+            if self._state != PlayerViewState.TRANSITIONING:
+                if self._player:
+                    self._player.stop()
+        except Exception as e:
+            logger.error(f"Error stopping player: {e}")
+        
+        self._set_state(PlayerViewState.IDLE)
+        self.playback_stopped.emit()
+    
+    def safe_stop_for_cleanup(self):
+        """
+        Safely prepare the player for logout/cleanup scenarios.
+        
+        IMPORTANT: We do NOT call player.stop() here because it crashes VLC on Windows
+        due to internal threading conflicts. Instead we:
+        1. Pause the player (safe operation)
+        2. Reset our state tracking
+        
+        The player will be properly cleaned up when the app closes via aboutToQuit signal.
+        """
+        logger.info("Performing safe stop for cleanup")
+        
+        if not self._player:
+            logger.info("No player to stop")
+            self._set_state(PlayerViewState.IDLE)
+            return
+        
+        try:
+            # Check if actually playing
+            is_playing = self._player.is_playing()
+            logger.info(f"Player is_playing: {is_playing}")
+            
+            if is_playing:
+                # Just pause - don't stop! stop() crashes VLC on Windows
+                logger.info("Pausing player (not stopping - stops crash VLC)...")
+                self._player.set_pause(1)
+                logger.info("Player paused successfully")
+            
+            # We deliberately do NOT call stop() here - it crashes!
+            # The player will be cleaned up when the app closes.
+            
+        except Exception as e:
+            logger.error(f"Error during safe stop: {e}")
+        
+        # Reset frame references and channel tracking
+        self._current_frame = None
+        self._current_channel = None
+        self._current_url = None
+        
+        logger.info("Safe stop completed (player paused, not stopped)")
+        
         self._set_state(PlayerViewState.IDLE)
         self.playback_stopped.emit()
     
@@ -419,13 +607,35 @@ class SharedPlayerManager(QObject):
         logger.info("Cleaning up SharedPlayerManager...")
         
         if self._player:
-            self._player.stop()
-            self._player.release()
-            self._player = None
+            try:
+                # Stop playback first
+                self._player.stop()
+                
+                # Detach from window before releasing to prevent crashes
+                try:
+                    if sys.platform == "win32":
+                        self._player.set_hwnd(None)
+                    elif sys.platform.startswith('linux'):
+                        self._player.set_xwindow(0)
+                    elif sys.platform == "darwin":
+                        self._player.set_nsobject(0)
+                except Exception as e:
+                    logger.warning(f"Could not detach player from window: {e}")
+                
+                # Now release the player
+                self._player.release()
+            except Exception as e:
+                logger.error(f"Error during player cleanup: {e}")
+            finally:
+                self._player = None
             
         if self._vlc_instance:
-            self._vlc_instance.release()
-            self._vlc_instance = None
+            try:
+                self._vlc_instance.release()
+            except Exception as e:
+                logger.error(f"Error releasing VLC instance: {e}")
+            finally:
+                self._vlc_instance = None
         
         self._embedded_frame = None
         self._fullscreen_frame = None

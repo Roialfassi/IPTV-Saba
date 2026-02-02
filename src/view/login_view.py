@@ -459,6 +459,21 @@ class LoginScreen(QWidget):
         """Update the boolean variable based on the checkbox state"""
         self.auto_login = state == 2  # Checked (Qt.Checked) is 2, Unchecked (Qt.Unchecked) is 0
 
+    def closeEvent(self, event):
+        """
+        Handle window close event for clean exit.
+        
+        Ensures any open dialogs are closed and resources are cleaned up.
+        """
+        # Close any open dialogs
+        for child in self.findChildren(QDialog):
+            try:
+                child.close()
+            except Exception:
+                pass
+        
+        event.accept()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

@@ -15,9 +15,8 @@ import threading
 from typing import Optional, Callable
 from datetime import datetime
 import requests
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 import vlc
-import time
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -238,12 +237,13 @@ class DownloadRecordManager(QObject):
             self.download_error.emit(recording_id, error_msg)
             return False
 
-    def stop_recording(self, recording_id: str) -> bool:
+    def stop_recording(self, recording_id: str, blocking: bool = False) -> bool:
         """
         Stop an active recording.
 
         Args:
             recording_id: Unique identifier for the recording
+            blocking: If True, waits synchronously for finalization (for app cleanup)
 
         Returns:
             True if recording was stopped successfully
@@ -255,19 +255,36 @@ class DownloadRecordManager(QObject):
         try:
             recording_info = self.active_recordings[recording_id]
             player = recording_info['player']
+            vlc_instance = recording_info.get('instance')
             filepath = recording_info['filepath']
 
             # Stop the player
             player.stop()
 
-            # Give it a moment to finalize the file
-            time.sleep(1)
-
-            # Remove from active recordings
+            # Remove from active recordings immediately
             del self.active_recordings[recording_id]
 
-            logger.info(f"Stopped recording {recording_id}: {filepath}")
-            self.recording_stopped.emit(recording_id, filepath)
+            def finalize_recording():
+                """Finalize the recording after VLC has finished writing."""
+                try:
+                    # Release VLC resources
+                    player.release()
+                    if vlc_instance:
+                        vlc_instance.release()
+                    logger.info(f"Stopped recording {recording_id}: {filepath}")
+                    self.recording_stopped.emit(recording_id, filepath)
+                except Exception as e:
+                    logger.error(f"Error finalizing recording {recording_id}: {e}")
+
+            if blocking:
+                # Blocking mode for cleanup during app shutdown
+                import time
+                time.sleep(0.5)
+                finalize_recording()
+            else:
+                # Non-blocking mode - use QTimer for UI-friendly finalization
+                QTimer.singleShot(500, finalize_recording)
+
             return True
 
         except Exception as e:
@@ -308,17 +325,32 @@ class DownloadRecordManager(QObject):
         """Get list of active recording IDs."""
         return list(self.active_recordings.keys())
 
-    def cleanup_all(self):
-        """Stop all active downloads and recordings."""
+    def cleanup_all(self, blocking: bool = True):
+        """
+        Stop all active downloads and recordings.
+        
+        Args:
+            blocking: If True, waits for finalization (use during app shutdown)
+        """
+        logger.info(f"Cleaning up all downloads and recordings (blocking={blocking})")
+        
         # Cancel all downloads
-        for download_id in list(self.active_downloads.keys()):
-            self.cancel_download(download_id)
+        active_download_ids = list(self.active_downloads.keys())
+        for download_id in active_download_ids:
+            try:
+                self.cancel_download(download_id)
+            except Exception as e:
+                logger.error(f"Error cancelling download {download_id}: {e}")
 
-        # Stop all recordings
-        for recording_id in list(self.active_recordings.keys()):
-            self.stop_recording(recording_id)
+        # Stop all recordings (use blocking mode if specified)
+        active_recording_ids = list(self.active_recordings.keys())
+        for recording_id in active_recording_ids:
+            try:
+                self.stop_recording(recording_id, blocking=blocking)
+            except Exception as e:
+                logger.error(f"Error stopping recording {recording_id}: {e}")
 
-        logger.info("Cleaned up all downloads and recordings")
+        logger.info(f"Cleaned up {len(active_download_ids)} downloads and {len(active_recording_ids)} recordings")
 
 
 if __name__ == "__main__":

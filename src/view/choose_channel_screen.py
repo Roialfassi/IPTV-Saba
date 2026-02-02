@@ -27,19 +27,37 @@ logger = logging.getLogger(__name__)
 
 
 class LoaderWorker(QObject):
-    """Worker thread for loading IPTV data without blocking the UI"""
+    """
+    Worker thread for loading IPTV data without blocking the UI.
+    
+    Thread Safety:
+    - Creates its own DataLoader instance to avoid shared state issues
+    - Only accesses thread-safe profile data (copies made at init time)
+    - Emits signals to communicate with main thread
+    """
     finished = pyqtSignal()
+    data_loaded = pyqtSignal(object)  # Emits the loaded DataLoader with groups
     progress = pyqtSignal(int)  # Progress percentage (0-100)
     progress_message = pyqtSignal(str)  # Status message
     error = pyqtSignal(str)
 
     def __init__(self, controller: Controller):
         super().__init__()
+        # Store references to controller components
         self.controller = controller
-        self.loader = controller.data_loader
-        self.source = controller.active_profile.url
-        self.active_profile = controller.active_profile
-        self.config_dir = controller.config_dir
+        
+        # Copy the data we need to avoid accessing shared state from worker thread
+        self.source = str(controller.active_profile.url)  # Make a copy
+        self.profile_name = str(controller.active_profile.name)  # Make a copy
+        self.config_dir = str(controller.config_dir)  # Make a copy
+        self.is_within_24_hours = controller.active_profile.is_within_24_hours()
+        
+        # Create a dedicated DataLoader for this worker thread (thread safety)
+        from src.data.data_loader import DataLoader
+        self.loader = DataLoader()
+        
+        # Keep reference to the controller's loader to update after loading
+        self.controller_loader = controller.data_loader
 
     def _progress_callback(self, current: int, total: int, message: str):
         """Callback for DataLoader progress updates"""
@@ -50,9 +68,10 @@ class LoaderWorker(QObject):
 
     def run(self):
         try:
-            data_path = Path(os.path.join(self.config_dir, (self.active_profile.name + "data.json")))
-            # load from File
-            if self.active_profile.is_within_24_hours() is True and data_path.is_file():
+            data_path = Path(os.path.join(self.config_dir, (self.profile_name + "data.json")))
+            
+            # Load from File if cache is valid
+            if self.is_within_24_hours and data_path.is_file():
                 logger.info("Loading Data from file since last login was recently")
                 self.progress_message.emit("Loading from cache...")
                 self.loader.load_from_json(data_path)
@@ -66,13 +85,23 @@ class LoaderWorker(QObject):
                     self.error.emit("Failed to load IPTV data from URL")
                     self.progress_message.emit("Falling back to cached data...")
                     logger.info("Loading Data from file as fallback")
-                    self.loader.load_from_json(data_path)
+                    if data_path.is_file():
+                        self.loader.load_from_json(data_path)
+                    else:
+                        self.error.emit("No cached data available")
+                        self.finished.emit()
+                        return
                 else:
                     self.progress_message.emit("Saving to cache...")
                     self.loader.save_to_json(data_path)
+                    
+                    # Update profile in main thread via controller (thread-safe via signals)
                     self.controller.active_profile.update_last_loaded()
                     self.controller.profile_manager.update_profile(self.controller.active_profile)
                     self.controller.profile_manager.export_profiles(self.controller.profile_path)
+            
+            # Transfer loaded data to the controller's loader (on main thread via signal)
+            self.data_loaded.emit(self.loader)
             
             self.progress_message.emit("Loading complete!")
             self.finished.emit()
@@ -352,6 +381,11 @@ class ChooseChannelScreen(QWidget):
         # Keep references for backward compatibility
         self.player = self.shared_player.player
         self.instance = self.shared_player.vlc_instance
+        
+        # Connect shared player signals for error handling and feedback
+        self.shared_player.stream_error.connect(self._on_stream_error)
+        self.shared_player.connection_timeout.connect(self._on_connection_timeout)
+        self.shared_player.buffering.connect(self._on_buffering)
 
         # Playback Controls Layout
         controls_layout = QHBoxLayout()
@@ -439,6 +473,9 @@ class ChooseChannelScreen(QWidget):
             self.thread.finished.connect(self.on_loading_finished)
             self.worker.error.connect(self.show_error)
             
+            # Connect data_loaded to transfer data from worker to controller (thread-safe)
+            self.worker.data_loaded.connect(self._on_data_loaded_from_worker)
+            
             # Connect progress message to update loading overlay text
             self.worker.progress_message.connect(self.loading_overlay.update_text)
 
@@ -448,6 +485,22 @@ class ChooseChannelScreen(QWidget):
             logger.error(f"Failed to start loading: {e}")
             self.show_error(f"Failed to start loading: {str(e)}")
 
+    def _on_data_loaded_from_worker(self, loaded_data_loader):
+        """
+        Transfer loaded data from worker's DataLoader to controller's DataLoader.
+        This is called on the main thread via signal, ensuring thread safety.
+        
+        Args:
+            loaded_data_loader: The DataLoader instance from the worker with loaded data
+        """
+        try:
+            # Transfer the loaded groups to the controller's data_loader
+            self.controller.data_loader._groups = loaded_data_loader._groups
+            self.controller.data_loader._channels = loaded_data_loader._channels
+            self.controller.data_loader._channel_index = loaded_data_loader._channel_index
+            logger.info(f"Transferred {len(loaded_data_loader._groups)} groups to controller")
+        except Exception as e:
+            logger.error(f"Error transferring loaded data: {e}")
 
     def on_loading_finished(self):
         """Called when loading has completed"""
@@ -594,6 +647,51 @@ class ChooseChannelScreen(QWidget):
         """
         if self.player:
             self.player.set_position(position / 1000.0)
+
+    # ==================== Stream Error/Timeout Handlers ====================
+    
+    def _on_stream_error(self, error_msg: str):
+        """
+        Handle stream errors from VLC.
+        
+        Args:
+            error_msg: Error message describing what went wrong
+        """
+        logger.error(f"Stream error: {error_msg}")
+        QMessageBox.warning(
+            self, 
+            "Stream Error", 
+            error_msg,
+            QMessageBox.Ok
+        )
+    
+    def _on_connection_timeout(self, timeout_msg: str):
+        """
+        Handle connection timeout when stream fails to connect.
+        
+        Args:
+            timeout_msg: Timeout message with details
+        """
+        logger.warning(f"Connection timeout: {timeout_msg}")
+        QMessageBox.warning(
+            self, 
+            "Connection Timeout", 
+            timeout_msg + "\n\nPlease try another channel or check your network connection.",
+            QMessageBox.Ok
+        )
+    
+    def _on_buffering(self, percentage: int):
+        """
+        Handle buffering status updates.
+        
+        Can be used to show buffering indicator in the UI.
+        
+        Args:
+            percentage: Buffering percentage (0-100)
+        """
+        # Currently just log, but could update a buffering indicator in the UI
+        if percentage < 100 and percentage > 0:
+            logger.debug(f"Buffering: {percentage}%")
 
     def add_to_history(self, channel: Channel):
         """
@@ -887,16 +985,52 @@ class ChooseChannelScreen(QWidget):
         """
         Ensures that resources are properly released when the widget is closed.
         """
-        # Clean up all downloads and recordings
-        if hasattr(self, 'download_manager'):
-            self.download_manager.cleanup_all()
-
-        # Stop playback but don't release the shared player
-        # (other views may still use it, and app closing will trigger cleanup)
-        if hasattr(self, 'shared_player') and self.shared_player:
-            self.shared_player.stop()
-        
+        self._perform_full_cleanup()
         event.accept()
+
+    def _perform_full_cleanup(self, for_logout: bool = False):
+        """
+        Centralized cleanup for all exit scenarios.
+        
+        Args:
+            for_logout: If True, resets shared player state for clean re-login
+        """
+        logger.info(f"Performing cleanup (for_logout={for_logout})")
+        
+        # Clean up all downloads and recordings first (may need time to finalize)
+        if hasattr(self, 'download_manager'):
+            try:
+                self.download_manager.cleanup_all()
+                logger.info("Download manager cleanup complete")
+            except Exception as e:
+                logger.error(f"Error cleaning up download manager: {e}")
+
+        # Close fullscreen view if open
+        if hasattr(self, 'fullscreen_view') and self.fullscreen_view:
+            try:
+                self.fullscreen_view.close()
+                self.fullscreen_view = None
+                logger.info("Fullscreen view closed")
+            except Exception as e:
+                logger.error(f"Error closing fullscreen view: {e}")
+
+        # Stop playback and optionally reset state
+        if hasattr(self, 'shared_player') and self.shared_player:
+            try:
+                if for_logout:
+                    # Use safe stop which pauses player and resets state
+                    # Note: We don't call stop() as it crashes VLC on Windows
+                    self.shared_player.safe_stop_for_cleanup()
+                    # Unregister this frame since we're logging out
+                    self.shared_player._embedded_frame = None
+                    logger.info("Shared player state reset for logout")
+                else:
+                    # Normal close - just stop (this may be called during app shutdown)
+                    self.shared_player.stop()
+            except Exception as e:
+                logger.error(f"Error stopping shared player: {e}")
+        
+        logger.info("Cleanup complete")
 
     def open_fullscreen_view(self, channel: Channel):
         """
@@ -959,17 +1093,26 @@ class ChooseChannelScreen(QWidget):
 
     @pyqtSlot()
     def logout(self):
+        """
+        Handle logout with proper resource cleanup.
+        
+        Ensures all downloads/recordings are stopped and player state
+        is reset before transitioning back to login screen.
+        """
         reply = QMessageBox.question(
             self, 'Logout Confirmation',
             "Are you sure you want to logout?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            if self.player:
-                self.player.stop()
-            self.logout_signal.emit("logging Out")
-
-            # QApplication.quit()
+            logger.info("User confirmed logout - performing cleanup")
+            
+            # Perform full cleanup with logout flag
+            self._perform_full_cleanup(for_logout=True)
+            
+            # Small delay to ensure VLC has fully stopped before transitioning
+            # This prevents crashes when the window is destroyed during transition
+            QTimer.singleShot(100, lambda: self.logout_signal.emit("logging Out"))
 
 
 def main():

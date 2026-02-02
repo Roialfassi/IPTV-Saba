@@ -478,11 +478,32 @@ class ChooseChannelScreen(QWidget):
         QMessageBox.critical(self, "Error", message)
 
     def closeEvent(self, event):
-        if self.player:
-            self.player.stop()
-            self.player.release()
-        if self.instance:
-            self.instance.release()
+        """
+        Ensures that resources are properly released when the widget is closed.
+        """
+        logger.info("ccs_v2: Performing cleanup on close")
+        
+        # Close fullscreen view if open
+        if self.fullscreen_view:
+            try:
+                self.fullscreen_view.close()
+                self.fullscreen_view = None
+            except Exception as e:
+                logger.error(f"Error closing fullscreen view: {e}")
+        
+        # Properly release VLC resources
+        try:
+            if self.player:
+                self.player.stop()
+                self.player.release()
+                self.player = None
+            if self.instance:
+                self.instance.release()
+                self.instance = None
+            logger.info("VLC resources released")
+        except Exception as e:
+            logger.error(f"Error releasing VLC resources: {e}")
+        
         event.accept()
 
     def open_fullscreen_view(self, channel: Channel):
@@ -497,14 +518,38 @@ class ChooseChannelScreen(QWidget):
 
     @pyqtSlot()
     def logout(self):
+        """
+        Handle logout with proper resource cleanup.
+        
+        Ensures player is stopped and state is properly reset
+        before transitioning back to login screen.
+        """
         reply = QMessageBox.question(
             self, 'Logout Confirmation',
             "Are you sure you want to logout?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply == QMessageBox.Yes:
+            logger.info("User confirmed logout - performing cleanup")
+            
+            # Close fullscreen view if open
+            if self.fullscreen_view:
+                try:
+                    self.fullscreen_view.close()
+                    self.fullscreen_view = None
+                except Exception as e:
+                    logger.error(f"Error closing fullscreen view: {e}")
+            
+            # Stop playback
             if self.player:
-                self.player.stop()
+                try:
+                    self.player.stop()
+                except Exception as e:
+                    logger.error(f"Error stopping player: {e}")
+            
+            # Reset active channel
+            self.active_channel = None
+            
             self.logout_signal.emit("logging Out")
 
     def toggle_theme(self):

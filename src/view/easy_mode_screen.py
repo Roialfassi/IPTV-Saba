@@ -202,7 +202,11 @@ class EasyModeScreen(QWidget):
         self.play_channel()
 
     def exit_easy_mode(self):
-        self.player.stop()
+        """
+        Exit Easy Mode with proper resource cleanup.
+        
+        Note: close() will trigger closeEvent which handles the actual cleanup.
+        """
         self.exit_easy_mode_signal.emit()
         self.close()
 
@@ -268,9 +272,29 @@ class EasyModeScreen(QWidget):
         event.accept()
 
     def closeEvent(self, event):
+        """
+        Handle window close with proper VLC resource cleanup.
+        
+        Ensures VLC player and instance are properly released to prevent
+        memory leaks and potential crashes.
+        """
+        # Exit fullscreen first if needed
         if self.is_fullscreen:
             self.toggle_fullscreen()
-        self.player.stop()
+        
+        # Proper VLC cleanup
+        try:
+            if hasattr(self, 'player') and self.player:
+                self.player.stop()
+                self.player.release()
+                self.player = None
+            
+            if hasattr(self, 'vlc_instance') and self.vlc_instance:
+                self.vlc_instance.release()
+                self.vlc_instance = None
+        except Exception as e:
+            print(f"Error during EasyModeScreen cleanup: {e}")
+        
         event.accept()
 
     def toggle_fullscreen(self):
