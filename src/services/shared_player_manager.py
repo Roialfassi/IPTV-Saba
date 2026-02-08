@@ -10,13 +10,25 @@ Uses a state machine pattern to manage view transitions properly.
 import sys
 import logging
 from enum import Enum, auto
-from typing import Optional, Callable
+from typing import Optional, Callable, List, Tuple
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QWidget
 import vlc
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Import StreamHealthTracker (lazy to avoid circular imports)
+_health_tracker = None
+
+
+def get_health_tracker():
+    """Lazy import and get the health tracker instance."""
+    global _health_tracker
+    if _health_tracker is None:
+        from src.services.stream_health_tracker import StreamHealthTracker
+        _health_tracker = StreamHealthTracker.get_instance()
+    return _health_tracker
 
 
 class PlayerViewState(Enum):
@@ -50,9 +62,24 @@ class SharedPlayerManager(QObject):
     stream_error = pyqtSignal(str)  # Emitted on VLC stream errors
     connection_timeout = pyqtSignal(str)  # Emitted when stream fails to connect
     buffering = pyqtSignal(int)  # Emitted during buffering with percentage
+
+    # Audio/Subtitle track signals
+    audio_tracks_available = pyqtSignal(list)  # List of (id, name) tuples
+    subtitles_available = pyqtSignal(list)  # List of (id, name) tuples
+
+    # Retry signals
+    retry_started = pyqtSignal(str, int, int)  # channel_name, attempt, max_attempts
+    retry_exhausted = pyqtSignal(str)  # channel_name - all retries failed
+
+    # Quality selection signals
+    quality_variants_available = pyqtSignal(list)  # List of QualityVariant objects
     
     # Connection timeout in seconds
     CONNECTION_TIMEOUT = 15
+
+    # Retry configuration
+    MAX_RETRY_ATTEMPTS = 3
+    RETRY_DELAYS = [2000, 4000, 8000]  # Exponential backoff in ms
     
     def __new__(cls, *args, **kwargs):
         """Ensure only one instance exists (Singleton pattern)."""
@@ -97,7 +124,17 @@ class SharedPlayerManager(QObject):
         # Connection timeout tracking
         self._connection_timer: Optional[QTimer] = None
         self._is_connecting: bool = False
-        
+
+        # Retry state
+        self._retry_timer: Optional[QTimer] = None
+        self._retry_count: int = 0
+        self._retry_enabled: bool = True
+
+        # Quality selection state
+        self._quality_variants: list = []
+        self._current_quality_index: int = 0  # 0 = Auto (original URL)
+        self._original_url: Optional[str] = None
+
         # Setup VLC event callbacks
         self._setup_vlc_events()
         
@@ -207,6 +244,20 @@ class SharedPlayerManager(QObject):
         logger.info("VLC Event: Playing")
         self._is_connecting = False
         self._cancel_connection_timer()
+        self._cancel_retry()  # Success - cancel any pending retries
+        self._retry_count = 0  # Reset retry count
+
+        # Record success in health tracker
+        if self._current_channel:
+            get_health_tracker().record_success(self._current_channel.name)
+
+        # Emit available audio and subtitle tracks after a short delay
+        # (allow media to be fully parsed)
+        QTimer.singleShot(500, self._emit_audio_tracks)
+        QTimer.singleShot(500, self._emit_subtitle_tracks)
+
+        # Fetch quality variants for HLS streams
+        QTimer.singleShot(1000, self._fetch_quality_variants)
     
     def _on_paused(self, event):
         """Called when playback is paused."""
@@ -229,10 +280,22 @@ class SharedPlayerManager(QObject):
         logger.error("VLC Event: Error encountered")
         self._is_connecting = False
         self._cancel_connection_timer()
-        
+
         channel_name = self._current_channel.name if self._current_channel else "Unknown"
-        error_msg = f"Stream error for '{channel_name}'. The stream may be offline or unavailable."
-        self.stream_error.emit(error_msg)
+
+        # Record failure in health tracker
+        if self._current_channel:
+            get_health_tracker().record_failure(channel_name)
+
+        # Attempt retry if enabled and not exhausted
+        if self._retry_enabled and self._retry_count < self.MAX_RETRY_ATTEMPTS:
+            self._schedule_retry()
+        else:
+            # No more retries - emit error
+            if self._retry_count >= self.MAX_RETRY_ATTEMPTS:
+                self.retry_exhausted.emit(channel_name)
+            error_msg = f"Stream error for '{channel_name}'. The stream may be offline or unavailable."
+            self.stream_error.emit(error_msg)
     
     def _on_buffering(self, event):
         """Called during buffering with percentage."""
@@ -272,17 +335,107 @@ class SharedPlayerManager(QObject):
         if self._is_connecting:
             logger.warning("Connection timeout - stream failed to connect")
             self._is_connecting = False
-            
+
             channel_name = self._current_channel.name if self._current_channel else "Unknown"
-            timeout_msg = f"Connection timeout for '{channel_name}'. The stream may be offline or your connection is slow."
-            self.connection_timeout.emit(timeout_msg)
-            
+
+            # Record failure in health tracker
+            if self._current_channel:
+                get_health_tracker().record_failure(channel_name)
+
             # Stop the player after timeout
             try:
                 self._player.stop()
             except Exception:
                 pass
-    
+
+            # Attempt retry if enabled and not exhausted
+            if self._retry_enabled and self._retry_count < self.MAX_RETRY_ATTEMPTS:
+                self._schedule_retry()
+            else:
+                # No more retries - emit timeout
+                if self._retry_count >= self.MAX_RETRY_ATTEMPTS:
+                    self.retry_exhausted.emit(channel_name)
+                timeout_msg = f"Connection timeout for '{channel_name}'. The stream may be offline or your connection is slow."
+                self.connection_timeout.emit(timeout_msg)
+
+    # ========================= Retry Logic =========================
+
+    def _schedule_retry(self):
+        """Schedule a retry attempt with exponential backoff."""
+        if not self._current_channel or not self._current_url:
+            logger.warning("Cannot retry - no channel/URL saved")
+            return
+
+        delay = self.RETRY_DELAYS[min(self._retry_count, len(self.RETRY_DELAYS) - 1)]
+        self._retry_count += 1
+
+        channel_name = self._current_channel.name
+        logger.info(f"Scheduling retry {self._retry_count}/{self.MAX_RETRY_ATTEMPTS} for '{channel_name}' in {delay}ms")
+
+        # Emit retry started signal
+        self.retry_started.emit(channel_name, self._retry_count, self.MAX_RETRY_ATTEMPTS)
+
+        # Schedule retry
+        self._cancel_retry()
+        self._retry_timer = QTimer()
+        self._retry_timer.setSingleShot(True)
+        self._retry_timer.timeout.connect(self._execute_retry)
+        self._retry_timer.start(delay)
+
+    def _execute_retry(self):
+        """Execute the retry attempt."""
+        if not self._current_channel or not self._current_url:
+            logger.warning("Cannot execute retry - no channel/URL")
+            return
+
+        logger.info(f"Executing retry {self._retry_count}/{self.MAX_RETRY_ATTEMPTS}")
+
+        try:
+            # Stop current playback
+            self._player.stop()
+
+            # Re-create media and play
+            media = self._vlc_instance.media_new(self._current_url)
+            if media:
+                self._player.set_media(media)
+                self._player.play()
+                logger.info("Retry playback started")
+            else:
+                logger.error("Failed to create media for retry")
+        except Exception as e:
+            logger.error(f"Error during retry: {e}")
+
+    def _cancel_retry(self):
+        """Cancel any pending retry timer."""
+        if self._retry_timer:
+            self._retry_timer.stop()
+            self._retry_timer = None
+
+    def cancel_retry(self):
+        """
+        Public method to cancel retry sequence.
+
+        Call this when user manually stops playback or switches channels.
+        """
+        self._cancel_retry()
+        self._retry_count = 0
+        logger.info("Retry sequence cancelled")
+
+    def set_retry_enabled(self, enabled: bool):
+        """Enable or disable automatic retry on stream errors."""
+        self._retry_enabled = enabled
+        logger.info(f"Retry enabled: {enabled}")
+
+    @property
+    def is_retrying(self) -> bool:
+        """Check if a retry is currently scheduled."""
+        return self._retry_timer is not None and self._retry_timer.isActive()
+
+    @property
+    def retry_count(self) -> int:
+        """Get the current retry attempt count."""
+        return self._retry_count
+
     # ========================= Frame Registration =========================
     
     def register_embedded_frame(self, frame: QWidget):
@@ -335,7 +488,7 @@ class SharedPlayerManager(QObject):
     def play_channel(self, channel, frame: QWidget = None) -> bool:
         """
         Start playing a channel.
-        
+
         Args:
             channel: The channel object to play (must have stream_url)
             frame: The video frame to attach to (defaults to embedded frame)
@@ -343,12 +496,21 @@ class SharedPlayerManager(QObject):
         if not channel or not hasattr(channel, 'stream_url'):
             logger.error("Invalid channel object")
             return False
-        
+
         target_frame = frame or self._embedded_frame
         if not target_frame:
             logger.error("No frame available for playback")
             return False
-        
+
+        # Cancel any pending retry from previous channel
+        self._cancel_retry()
+        self._retry_count = 0
+
+        # Reset quality variants for new channel
+        self._quality_variants = []
+        self._current_quality_index = 0
+        self._original_url = None
+
         try:
             # Attach to frame first
             if not self._attach_to_frame(target_frame):
@@ -396,25 +558,34 @@ class SharedPlayerManager(QObject):
     def stop(self):
         """
         Stop playback safely.
-        
-        Uses pause-first approach to avoid VLC threading crashes.
+
+        Uses pause-first approach to avoid VLC threading crashes on Windows.
+        On Windows, we avoid calling stop() entirely since it can crash.
         """
         logger.info("Stopping playback")
         self._cancel_connection_timer()
+        self._cancel_retry()
         self._is_connecting = False
-        
+
         try:
-            if self._player and self._player.is_playing():
-                # Pause first to avoid VLC crashes
-                self._player.set_pause(1)
-            
-            # Small delay then stop (if not transitioning)
-            if self._state != PlayerViewState.TRANSITIONING:
-                if self._player:
+            if self._player:
+                is_playing = self._player.is_playing()
+                if is_playing:
+                    # Pause first to avoid VLC crashes
+                    self._player.set_pause(1)
+
+                # On Windows, avoid calling stop() as it can crash VLC
+                # Instead, just set media to None which effectively stops playback
+                if sys.platform == "win32":
+                    try:
+                        self._player.set_media(None)
+                    except Exception:
+                        pass
+                elif self._state != PlayerViewState.TRANSITIONING:
                     self._player.stop()
         except Exception as e:
             logger.error(f"Error stopping player: {e}")
-        
+
         self._set_state(PlayerViewState.IDLE)
         self.playback_stopped.emit()
     
@@ -600,18 +771,312 @@ class SharedPlayerManager(QObject):
         self._set_state(PlayerViewState.EMBEDDED)
         logger.info("=== EMBEDDED TRANSITION COMPLETE ===")
     
+    # ========================= Audio Track Selection =========================
+
+    def get_audio_tracks(self) -> List[Tuple[int, str]]:
+        """
+        Get available audio tracks from the current media.
+
+        Returns:
+            List of tuples (track_id, track_name) for available audio tracks.
+        """
+        tracks = []
+        if not self._player:
+            return tracks
+
+        try:
+            track_description = self._player.audio_get_track_description()
+            if track_description:
+                for track in track_description:
+                    # track is a tuple of (id, name_bytes)
+                    track_id = track[0]
+                    track_name = track[1].decode('utf-8') if isinstance(track[1], bytes) else str(track[1])
+                    # Skip the "Disabled" track (usually id -1)
+                    if track_id != -1:
+                        tracks.append((track_id, track_name))
+            logger.debug(f"Found {len(tracks)} audio tracks")
+        except Exception as e:
+            logger.error(f"Error getting audio tracks: {e}")
+
+        return tracks
+
+    def set_audio_track(self, track_id: int) -> bool:
+        """
+        Set the active audio track.
+
+        Args:
+            track_id: The ID of the audio track to activate.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not self._player:
+            return False
+
+        try:
+            result = self._player.audio_set_track(track_id)
+            if result == 0:
+                logger.info(f"Audio track set to {track_id}")
+                return True
+            else:
+                logger.warning(f"Failed to set audio track to {track_id}")
+                return False
+        except Exception as e:
+            logger.error(f"Error setting audio track: {e}")
+            return False
+
+    def get_current_audio_track(self) -> int:
+        """Get the currently active audio track ID."""
+        if not self._player:
+            return -1
+        try:
+            return self._player.audio_get_track()
+        except Exception:
+            return -1
+
+    def _emit_audio_tracks(self):
+        """Emit available audio tracks after a delay (for media to be parsed)."""
+        tracks = self.get_audio_tracks()
+        if tracks:
+            self.audio_tracks_available.emit(tracks)
+
+    # ========================= Subtitle Support =========================
+
+    def get_subtitle_tracks(self) -> List[Tuple[int, str]]:
+        """
+        Get available subtitle tracks from the current media.
+
+        Returns:
+            List of tuples (track_id, track_name) for available subtitle tracks.
+            Includes "Disabled" option as first entry with id -1.
+        """
+        tracks = [(-1, "Disabled")]  # Always include disabled option
+        if not self._player:
+            return tracks
+
+        try:
+            track_description = self._player.video_get_spu_description()
+            if track_description:
+                for track in track_description:
+                    track_id = track[0]
+                    track_name = track[1].decode('utf-8') if isinstance(track[1], bytes) else str(track[1])
+                    # Skip the "Disabled" track if already present (usually id -1)
+                    if track_id != -1:
+                        tracks.append((track_id, track_name))
+            logger.debug(f"Found {len(tracks) - 1} subtitle tracks")
+        except Exception as e:
+            logger.error(f"Error getting subtitle tracks: {e}")
+
+        return tracks
+
+    def set_subtitle_track(self, track_id: int) -> bool:
+        """
+        Set the active subtitle track.
+
+        Args:
+            track_id: The ID of the subtitle track to activate (-1 to disable).
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not self._player:
+            return False
+
+        try:
+            result = self._player.video_set_spu(track_id)
+            if result == 0:
+                logger.info(f"Subtitle track set to {track_id}")
+                return True
+            else:
+                logger.warning(f"Failed to set subtitle track to {track_id}")
+                return False
+        except Exception as e:
+            logger.error(f"Error setting subtitle track: {e}")
+            return False
+
+    def get_current_subtitle_track(self) -> int:
+        """Get the currently active subtitle track ID."""
+        if not self._player:
+            return -1
+        try:
+            return self._player.video_get_spu()
+        except Exception:
+            return -1
+
+    def load_external_subtitle(self, subtitle_path: str) -> bool:
+        """
+        Load an external subtitle file.
+
+        Args:
+            subtitle_path: Path to the subtitle file (.srt, .sub, .ass, etc.)
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not self._player:
+            return False
+
+        try:
+            result = self._player.video_set_subtitle_file(subtitle_path)
+            if result:
+                logger.info(f"External subtitle loaded: {subtitle_path}")
+                # Emit updated subtitle tracks
+                QTimer.singleShot(500, self._emit_subtitle_tracks)
+                return True
+            else:
+                logger.warning(f"Failed to load subtitle file: {subtitle_path}")
+                return False
+        except Exception as e:
+            logger.error(f"Error loading subtitle file: {e}")
+            return False
+
+    def _emit_subtitle_tracks(self):
+        """Emit available subtitle tracks after a delay (for media to be parsed)."""
+        tracks = self.get_subtitle_tracks()
+        if tracks:
+            self.subtitles_available.emit(tracks)
+
+    # ========================= Quality Selection =========================
+
+    def _fetch_quality_variants(self):
+        """
+        Fetch quality variants for the current stream if it's HLS.
+
+        This runs in the main thread after playback starts. For production,
+        consider moving to a background thread.
+        """
+        if not self._current_url:
+            return
+
+        from src.services.hls_parser import get_hls_parser, HLSParser
+
+        parser = get_hls_parser()
+
+        if not parser.is_hls_url(self._current_url):
+            logger.debug(f"Not an HLS stream: {self._current_url}")
+            return
+
+        try:
+            variants = parser.parse_master_playlist(self._current_url)
+            if variants:
+                self._quality_variants = variants
+                self._original_url = self._current_url
+                logger.info(f"Found {len(variants)} quality variants")
+                self.quality_variants_available.emit(variants)
+            else:
+                logger.debug("No quality variants found in HLS stream")
+        except Exception as e:
+            logger.error(f"Error fetching quality variants: {e}")
+
+    def get_quality_variants(self) -> list:
+        """
+        Get the available quality variants for the current stream.
+
+        Returns:
+            List of QualityVariant objects, or empty list if not available.
+        """
+        return self._quality_variants
+
+    def set_quality(self, variant_index: int) -> bool:
+        """
+        Switch to a different quality variant.
+
+        Args:
+            variant_index: Index into the quality_variants list.
+                          -1 or 0 means "Auto" (use original URL).
+
+        Returns:
+            True if the quality switch was initiated, False otherwise.
+        """
+        if variant_index <= 0:
+            # Auto quality - use original URL
+            if self._original_url and self._original_url != self._current_url:
+                logger.info("Switching to Auto quality (original URL)")
+                return self._switch_stream_url(self._original_url)
+            return True
+
+        if variant_index > len(self._quality_variants):
+            logger.warning(f"Invalid quality index: {variant_index}")
+            return False
+
+        variant = self._quality_variants[variant_index - 1]  # -1 because 0 is Auto
+        logger.info(f"Switching to quality: {variant.display_name}")
+        return self._switch_stream_url(variant.url)
+
+    def _switch_stream_url(self, new_url: str) -> bool:
+        """
+        Switch to a different stream URL while maintaining playback state.
+
+        Args:
+            new_url: The new URL to play.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not self._player or not new_url:
+            return False
+
+        try:
+            # Save current position
+            was_playing = self.is_playing
+            position = self._player.get_position() or 0.0
+
+            # Stop current playback
+            self._player.stop()
+
+            # Create new media and play
+            media = self._vlc_instance.media_new(new_url)
+            if not media:
+                logger.error("Failed to create media for quality switch")
+                return False
+
+            self._player.set_media(media)
+            self._current_url = new_url
+
+            if was_playing:
+                self._player.play()
+                # Restore position after brief delay
+                if position > 0.01:
+                    QTimer.singleShot(500, lambda: self._player.set_position(position))
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error switching stream URL: {e}")
+            return False
+
+    @property
+    def current_quality_index(self) -> int:
+        """Get the current quality variant index (0 = Auto)."""
+        return self._current_quality_index
+
     # ========================= Cleanup =========================
-    
+
     def cleanup(self):
-        """Clean up resources."""
+        """
+        Clean up resources safely.
+
+        IMPORTANT: On Windows, VLC has threading issues that can cause crashes
+        when calling stop() followed by release(). We use a gentler approach:
+        1. Pause first (safe operation)
+        2. Detach from window
+        3. Set media to None to release internal resources
+        4. Only then call release() with proper delays
+        """
         logger.info("Cleaning up SharedPlayerManager...")
-        
+
+        # Cancel any pending timers first
+        self._cancel_connection_timer()
+        self._cancel_retry()
+
         if self._player:
             try:
-                # Stop playback first
-                self._player.stop()
-                
-                # Detach from window before releasing to prevent crashes
+                # First, pause if playing (safer than stop on Windows)
+                if self._player.is_playing():
+                    self._player.set_pause(1)
+                    logger.info("Player paused")
+
+                # Detach from window before any cleanup
                 try:
                     if sys.platform == "win32":
                         self._player.set_hwnd(None)
@@ -619,30 +1084,51 @@ class SharedPlayerManager(QObject):
                         self._player.set_xwindow(0)
                     elif sys.platform == "darwin":
                         self._player.set_nsobject(0)
+                    logger.info("Player detached from window")
                 except Exception as e:
                     logger.warning(f"Could not detach player from window: {e}")
-                
-                # Now release the player
-                self._player.release()
+
+                # Set media to None to help release internal resources
+                try:
+                    self._player.set_media(None)
+                except Exception:
+                    pass
+
+                # On Windows, we skip stop() as it can crash
+                # The release() will handle cleanup
+                if sys.platform != "win32":
+                    try:
+                        self._player.stop()
+                    except Exception as e:
+                        logger.warning(f"Error stopping player: {e}")
+
+                # Release the player
+                try:
+                    self._player.release()
+                    logger.info("Player released")
+                except Exception as e:
+                    logger.error(f"Error releasing player: {e}")
             except Exception as e:
                 logger.error(f"Error during player cleanup: {e}")
             finally:
                 self._player = None
-            
+
         if self._vlc_instance:
             try:
                 self._vlc_instance.release()
+                logger.info("VLC instance released")
             except Exception as e:
                 logger.error(f"Error releasing VLC instance: {e}")
             finally:
                 self._vlc_instance = None
-        
+
         self._embedded_frame = None
         self._fullscreen_frame = None
         self._current_frame = None
         self._current_channel = None
+        self._current_url = None
         self._initialized = False
-        
+
         logger.info("SharedPlayerManager cleaned up")
 
 

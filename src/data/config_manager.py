@@ -14,7 +14,13 @@ class ConfigManager:
         "theme": "default",
         "app_version": "1.0.0",
         "first_run": True,
-        "log_level": "INFO"
+        "log_level": "INFO",
+        # Audio/Subtitle preferences
+        "preferred_audio_language": "",
+        "subtitles_enabled": False,
+        "preferred_subtitle_language": "",
+        # Quality preference
+        "preferred_quality": "auto"
     }
 
     def __init__(self, config_dir=None, config_filename="config.json"):
@@ -147,6 +153,52 @@ class ConfigManager:
         if self.auto_login_enabled and self.last_active_profile_id:
             return True, self.last_active_profile_id
         return False, None
+
+    # Audio/Subtitle/Quality preferences
+
+    @property
+    def preferred_audio_language(self) -> str:
+        """Get the preferred audio language."""
+        return self.config.get("preferred_audio_language", "")
+
+    @preferred_audio_language.setter
+    def preferred_audio_language(self, language: str):
+        """Set the preferred audio language."""
+        self.config["preferred_audio_language"] = language
+        self.save()
+
+    @property
+    def subtitles_enabled(self) -> bool:
+        """Check if subtitles are enabled by default."""
+        return self.config.get("subtitles_enabled", False)
+
+    @subtitles_enabled.setter
+    def subtitles_enabled(self, enabled: bool):
+        """Enable or disable subtitles by default."""
+        self.config["subtitles_enabled"] = bool(enabled)
+        self.save()
+
+    @property
+    def preferred_subtitle_language(self) -> str:
+        """Get the preferred subtitle language."""
+        return self.config.get("preferred_subtitle_language", "")
+
+    @preferred_subtitle_language.setter
+    def preferred_subtitle_language(self, language: str):
+        """Set the preferred subtitle language."""
+        self.config["preferred_subtitle_language"] = language
+        self.save()
+
+    @property
+    def preferred_quality(self) -> str:
+        """Get the preferred stream quality."""
+        return self.config.get("preferred_quality", "auto")
+
+    @preferred_quality.setter
+    def preferred_quality(self, quality: str):
+        """Set the preferred stream quality."""
+        self.config["preferred_quality"] = quality
+        self.save()
 
     # Additional utility methods
 

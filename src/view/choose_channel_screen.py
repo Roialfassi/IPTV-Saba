@@ -6,9 +6,10 @@ from pathlib import Path
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QListWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QSlider, QMessageBox, QSplitter,
-    QApplication, QSizePolicy, QMenu, QAction, QGraphicsOpacityEffect
+    QApplication, QSizePolicy, QMenu, QAction, QGraphicsOpacityEffect,
+    QComboBox, QFileDialog, QFrame
 )
-from PyQt5.QtCore import Qt, pyqtSlot, QObject, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve, QThread
+from PyQt5.QtCore import Qt, pyqtSlot, QObject, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve, QThread, QParallelAnimationGroup
 from PyQt5.QtGui import QFont, QIcon
 import vlc
 
@@ -20,10 +21,18 @@ from src.model.profile import create_mock_profile, Profile
 from src.view.full_screen_view import FullScreenView
 from src.services.download_record_manager import DownloadRecordManager
 from src.services.shared_player_manager import SharedPlayerManager, get_shared_player
+from src.view.retry_overlay import RetryOverlay
+from src.view.schedule_dialog import ScheduleRecordingDialog
+from src.services.schedule_manager import ScheduleManager
+from src.services.recording_scheduler import RecordingScheduler
+from src.utils.resource_path import resource_path
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Constants
+WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
 
 
 class LoaderWorker(QObject):
@@ -37,7 +46,7 @@ class LoaderWorker(QObject):
     """
     finished = pyqtSignal()
     data_loaded = pyqtSignal(object)  # Emits the loaded DataLoader with groups
-    progress = pyqtSignal(int)  # Progress percentage (0-100)
+    progress = pyqtSignal(int)  # Progress percentage (0-100)   
     progress_message = pyqtSignal(str)  # Status message
     error = pyqtSignal(str)
 
@@ -214,14 +223,30 @@ class ChooseChannelScreen(QWidget):
         # Track active downloads/recordings
         self.active_recordings = {}  # {channel_name: recording_id}
 
+        # Initialize scheduled recording system
+        self.schedule_manager = ScheduleManager(controller.config_dir)
+        self.recording_scheduler = RecordingScheduler(
+            self.schedule_manager,
+            self.download_manager
+        )
+        self.setup_scheduler_signals()
+        self.recording_scheduler.start()
+
         # Init loading overlay
         self.loading_overlay = LoadingOverlay(self)
         self.loading_overlay.hide()
+
+        # Init retry overlay
+        self.retry_overlay = RetryOverlay(self)
+        self.retry_overlay.cancel_button.clicked.connect(self._cancel_retry)
+        self.retry_overlay.hide()
+
         # Start loading data with progress indicators
         QTimer.singleShot(100, self.load_playlist_with_progress)
 
     def init_ui(self):
         self.setWindowTitle("IPTV - Choose Channel")
+        self.setWindowIcon(QIcon(WINDOW_ICON_PATH))
         self.setMinimumSize(800, 600)
         self.resize(1200, 700)
 
@@ -387,6 +412,18 @@ class ChooseChannelScreen(QWidget):
         self.shared_player.connection_timeout.connect(self._on_connection_timeout)
         self.shared_player.buffering.connect(self._on_buffering)
 
+        # Connect shared player signals for audio/subtitle tracks
+        self.shared_player.audio_tracks_available.connect(self._on_audio_tracks_available)
+        self.shared_player.subtitles_available.connect(self._on_subtitles_available)
+
+        # Connect shared player signals for retry handling
+        self.shared_player.retry_started.connect(self._on_retry_started)
+        self.shared_player.retry_exhausted.connect(self._on_retry_exhausted)
+        self.shared_player.playback_started.connect(self._on_playback_started)
+
+        # Connect shared player signals for quality selection
+        self.shared_player.quality_variants_available.connect(self._on_quality_variants_available)
+
         # Playback Controls Layout
         controls_layout = QHBoxLayout()
         controls_layout.setSpacing(10)
@@ -405,9 +442,107 @@ class ChooseChannelScreen(QWidget):
         self.volume_slider.setRange(0, 100)
         # Sync with shared player's volume
         self.volume_slider.setValue(self.shared_player.volume)
+        self.volume_slider.setToolTip("Adjust playback volume (0-100)")
         volume_layout.addWidget(self.volume_slider)
         controls_layout.addLayout(volume_layout)
         right_layout.addLayout(controls_layout)
+
+        # ---------- Collapsible Advanced Controls Section ----------
+        # Toggle button for advanced controls
+        self.advanced_toggle_button = QPushButton("▼ Advanced Controls")
+        self.advanced_toggle_button.setStyleSheet("""
+            QPushButton {
+                background-color: #333;
+                color: #aaa;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 3px;
+                font-size: 12px;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: #444;
+                color: #fff;
+            }
+        """)
+        self.advanced_toggle_button.setCursor(Qt.PointingHandCursor)
+        self.advanced_toggle_button.clicked.connect(self._toggle_advanced_controls)
+        right_layout.addWidget(self.advanced_toggle_button)
+
+        # Container widget for advanced controls (collapsible)
+        self.advanced_controls_widget = QWidget()
+        self.advanced_controls_widget.setObjectName("advancedControls")
+        self.advanced_controls_widget.setStyleSheet("""
+            QWidget#advancedControls {
+                background-color: #1a1a1a;
+                border-radius: 4px;
+                padding: 5px;
+            }
+        """)
+        advanced_controls_layout = QVBoxLayout(self.advanced_controls_widget)
+        advanced_controls_layout.setContentsMargins(10, 5, 10, 5)
+        advanced_controls_layout.setSpacing(8)
+
+        # First row: Audio and Subtitle tracks
+        track_row1 = QHBoxLayout()
+        track_row1.setSpacing(10)
+
+        # Audio Track Combo Box
+        track_row1.addWidget(QLabel("Audio:"))
+        self.audio_combo = QComboBox()
+        self.audio_combo.setMinimumWidth(100)
+        self.audio_combo.setToolTip("Select audio track")
+        self.audio_combo.currentIndexChanged.connect(self._on_audio_track_selected)
+        track_row1.addWidget(self.audio_combo)
+
+        # Subtitle Track Combo Box
+        track_row1.addWidget(QLabel("Subtitles:"))
+        self.subtitle_combo = QComboBox()
+        self.subtitle_combo.setMinimumWidth(100)
+        self.subtitle_combo.setToolTip("Select subtitle track")
+        self.subtitle_combo.currentIndexChanged.connect(self._on_subtitle_track_selected)
+        track_row1.addWidget(self.subtitle_combo)
+
+        track_row1.addStretch()
+        advanced_controls_layout.addLayout(track_row1)
+
+        # Second row: Quality and Load SRT
+        track_row2 = QHBoxLayout()
+        track_row2.setSpacing(10)
+
+        # Quality Selection Combo Box
+        track_row2.addWidget(QLabel("Quality:"))
+        self.quality_combo = QComboBox()
+        self.quality_combo.setMinimumWidth(100)
+        self.quality_combo.setToolTip("Select stream quality (HLS streams only)")
+        self.quality_combo.addItem("Auto", 0)
+        self.quality_combo.currentIndexChanged.connect(self._on_quality_selected)
+        track_row2.addWidget(self.quality_combo)
+
+        # Load External Subtitle Button
+        self.load_subtitle_button = QPushButton("Load SRT")
+        self.load_subtitle_button.setToolTip("Load external subtitle file")
+        self.load_subtitle_button.clicked.connect(self._load_external_subtitle)
+        self.load_subtitle_button.setStyleSheet("""
+            QPushButton {
+                background-color: #444;
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #555;
+            }
+        """)
+        track_row2.addWidget(self.load_subtitle_button)
+
+        track_row2.addStretch()
+        advanced_controls_layout.addLayout(track_row2)
+
+        # Initially collapsed
+        self.advanced_controls_widget.setVisible(False)
+        self._advanced_controls_expanded = False
+
+        right_layout.addWidget(self.advanced_controls_widget)
 
         # Favorites and History Buttons Layout
         favorites_history_layout = QHBoxLayout()
@@ -529,6 +664,17 @@ class ChooseChannelScreen(QWidget):
         self.group_list.clear()
         for group_name in sorted(self.groups_dict.keys()):
             self.group_list.addItem(group_name)
+
+    def _toggle_advanced_controls(self):
+        """Toggle the visibility of the advanced controls section."""
+        self._advanced_controls_expanded = not self._advanced_controls_expanded
+
+        if self._advanced_controls_expanded:
+            self.advanced_controls_widget.setVisible(True)
+            self.advanced_toggle_button.setText("▲ Advanced Controls")
+        else:
+            self.advanced_controls_widget.setVisible(False)
+            self.advanced_toggle_button.setText("▼ Advanced Controls")
 
     def filter_groups(self, text: str):
         """
@@ -653,14 +799,16 @@ class ChooseChannelScreen(QWidget):
     def _on_stream_error(self, error_msg: str):
         """
         Handle stream errors from VLC.
-        
+
         Args:
             error_msg: Error message describing what went wrong
         """
         logger.error(f"Stream error: {error_msg}")
+        # Hide retry overlay since we're showing error message
+        self.retry_overlay.hide_overlay()
         QMessageBox.warning(
-            self, 
-            "Stream Error", 
+            self,
+            "Stream Error",
             error_msg,
             QMessageBox.Ok
         )
@@ -668,14 +816,16 @@ class ChooseChannelScreen(QWidget):
     def _on_connection_timeout(self, timeout_msg: str):
         """
         Handle connection timeout when stream fails to connect.
-        
+
         Args:
             timeout_msg: Timeout message with details
         """
         logger.warning(f"Connection timeout: {timeout_msg}")
+        # Hide retry overlay since we're showing error message
+        self.retry_overlay.hide_overlay()
         QMessageBox.warning(
-            self, 
-            "Connection Timeout", 
+            self,
+            "Connection Timeout",
             timeout_msg + "\n\nPlease try another channel or check your network connection.",
             QMessageBox.Ok
         )
@@ -683,15 +833,171 @@ class ChooseChannelScreen(QWidget):
     def _on_buffering(self, percentage: int):
         """
         Handle buffering status updates.
-        
+
         Can be used to show buffering indicator in the UI.
-        
+
         Args:
             percentage: Buffering percentage (0-100)
         """
         # Currently just log, but could update a buffering indicator in the UI
         if percentage < 100 and percentage > 0:
             logger.debug(f"Buffering: {percentage}%")
+
+    # ==================== Audio/Subtitle Track Handlers ====================
+
+    def _on_audio_tracks_available(self, tracks):
+        """
+        Handle audio tracks becoming available.
+
+        Args:
+            tracks: List of (track_id, track_name) tuples
+        """
+        logger.info(f"Audio tracks available: {len(tracks)}")
+        self.audio_combo.blockSignals(True)
+        self.audio_combo.clear()
+        for track_id, track_name in tracks:
+            self.audio_combo.addItem(track_name, track_id)
+        self.audio_combo.blockSignals(False)
+
+        # Select current track
+        current = self.shared_player.get_current_audio_track()
+        for i in range(self.audio_combo.count()):
+            if self.audio_combo.itemData(i) == current:
+                self.audio_combo.setCurrentIndex(i)
+                break
+
+    def _on_subtitles_available(self, tracks):
+        """
+        Handle subtitle tracks becoming available.
+
+        Args:
+            tracks: List of (track_id, track_name) tuples
+        """
+        logger.info(f"Subtitle tracks available: {len(tracks)}")
+        self.subtitle_combo.blockSignals(True)
+        self.subtitle_combo.clear()
+        for track_id, track_name in tracks:
+            self.subtitle_combo.addItem(track_name, track_id)
+        self.subtitle_combo.blockSignals(False)
+
+        # Select current track
+        current = self.shared_player.get_current_subtitle_track()
+        for i in range(self.subtitle_combo.count()):
+            if self.subtitle_combo.itemData(i) == current:
+                self.subtitle_combo.setCurrentIndex(i)
+                break
+
+    def _on_audio_track_selected(self, index):
+        """Handle audio track selection from combo box."""
+        if index < 0:
+            return
+        track_id = self.audio_combo.itemData(index)
+        if track_id is not None:
+            self.shared_player.set_audio_track(track_id)
+            logger.info(f"Selected audio track: {track_id}")
+
+    def _on_subtitle_track_selected(self, index):
+        """Handle subtitle track selection from combo box."""
+        if index < 0:
+            return
+        track_id = self.subtitle_combo.itemData(index)
+        if track_id is not None:
+            self.shared_player.set_subtitle_track(track_id)
+            logger.info(f"Selected subtitle track: {track_id}")
+
+    def _load_external_subtitle(self):
+        """Load an external subtitle file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Subtitle File",
+            "",
+            "Subtitle Files (*.srt *.sub *.ass *.ssa *.vtt);;All Files (*)"
+        )
+        if file_path:
+            success = self.shared_player.load_external_subtitle(file_path)
+            if success:
+                logger.info(f"Loaded external subtitle: {file_path}")
+            else:
+                logger.error(f"Failed to load subtitle: {file_path}")
+                QMessageBox.warning(
+                    self,
+                    "Subtitle Error",
+                    f"Failed to load subtitle file:\n{file_path}"
+                )
+
+    # ==================== Retry Handlers ====================
+
+    def _on_retry_started(self, channel_name: str, attempt: int, max_attempts: int):
+        """
+        Handle retry started signal.
+
+        Args:
+            channel_name: Name of the channel being retried
+            attempt: Current attempt number
+            max_attempts: Maximum number of attempts
+        """
+        logger.info(f"Retry started for '{channel_name}': attempt {attempt}/{max_attempts}")
+        self.retry_overlay.resize(self.video_frame.size())
+        self.retry_overlay.move(self.video_frame.pos())
+        self.retry_overlay.show_retry(attempt, max_attempts)
+
+    def _on_retry_exhausted(self, channel_name: str):
+        """
+        Handle retry exhausted signal (all retries failed).
+
+        Args:
+            channel_name: Name of the channel that failed
+        """
+        logger.warning(f"All retries exhausted for '{channel_name}'")
+        self.retry_overlay.hide_overlay()
+        QMessageBox.warning(
+            self,
+            "Stream Unavailable",
+            f"Could not connect to '{channel_name}' after multiple attempts.\n\n"
+            "The stream may be offline or temporarily unavailable.",
+            QMessageBox.Ok
+        )
+
+    def _cancel_retry(self):
+        """Cancel the current retry sequence."""
+        self.shared_player.cancel_retry()
+        self.retry_overlay.hide_overlay()
+        logger.info("User cancelled retry sequence")
+
+    def _on_playback_started(self):
+        """Handle successful playback start - hide retry overlay."""
+        self.retry_overlay.hide_overlay()
+        # Reset quality combo for new channel
+        self.quality_combo.blockSignals(True)
+        self.quality_combo.clear()
+        self.quality_combo.addItem("Auto", 0)
+        self.quality_combo.blockSignals(False)
+
+    # ==================== Quality Selection Handlers ====================
+
+    def _on_quality_variants_available(self, variants):
+        """
+        Handle quality variants becoming available.
+
+        Args:
+            variants: List of QualityVariant objects
+        """
+        logger.info(f"Quality variants available: {len(variants)}")
+        self.quality_combo.blockSignals(True)
+        self.quality_combo.clear()
+        self.quality_combo.addItem("Auto", 0)
+        for i, variant in enumerate(variants, start=1):
+            self.quality_combo.addItem(variant.display_name, i)
+        self.quality_combo.blockSignals(False)
+
+    def _on_quality_selected(self, index):
+        """Handle quality selection from combo box."""
+        if index < 0:
+            return
+        variant_index = self.quality_combo.itemData(index)
+        if variant_index is not None:
+            self.shared_player.set_quality(variant_index)
+            logger.info(f"Selected quality: index {variant_index}")
 
     def add_to_history(self, channel: Channel):
         """
@@ -769,6 +1075,12 @@ class ChooseChannelScreen(QWidget):
                     record_action = QAction("🔴 Start Recording", self)
                     record_action.triggered.connect(lambda: self.start_recording_channel(channel))
                     menu.addAction(record_action)
+
+            # Schedule recording option (for all streams)
+            menu.addSeparator()
+            schedule_action = QAction("🗓️ Schedule Recording", self)
+            schedule_action.triggered.connect(lambda: self.schedule_recording(channel))
+            menu.addAction(schedule_action)
 
         menu.exec_(self.channel_list.viewport().mapToGlobal(position))
 
@@ -853,6 +1165,12 @@ class ChooseChannelScreen(QWidget):
         self.download_manager.download_error.connect(self.on_download_error)
         self.download_manager.recording_started.connect(self.on_recording_started)
         self.download_manager.recording_stopped.connect(self.on_recording_stopped)
+
+    def setup_scheduler_signals(self):
+        """Setup signals for recording scheduler."""
+        self.recording_scheduler.schedule_started.connect(self.on_scheduled_recording_started)
+        self.recording_scheduler.schedule_completed.connect(self.on_scheduled_recording_completed)
+        self.recording_scheduler.schedule_failed.connect(self.on_scheduled_recording_failed)
 
     def download_channel(self, channel: Channel):
         """Start downloading a media file."""
@@ -953,6 +1271,71 @@ class ChooseChannelScreen(QWidget):
             f"Recording saved successfully!\n\nSaved to:\n{filepath}"
         )
 
+    # ==================== Scheduled Recording Methods ====================
+
+    def schedule_recording(self, channel: Channel):
+        """
+        Open the schedule recording dialog for a channel.
+
+        Args:
+            channel: The channel to schedule recording for.
+        """
+        schedule = ScheduleRecordingDialog.create_schedule(channel, self)
+        if schedule:
+            # Check for conflicts
+            conflicts = self.schedule_manager.get_conflicts(schedule)
+            if conflicts:
+                conflict_names = ", ".join([c.channel_name for c in conflicts])
+                QMessageBox.warning(
+                    self,
+                    "Schedule Conflict",
+                    f"This recording conflicts with existing schedule(s):\n{conflict_names}\n\n"
+                    "Please choose a different time."
+                )
+                return
+
+            # Add the schedule
+            if self.schedule_manager.add_schedule(schedule):
+                QMessageBox.information(
+                    self,
+                    "Recording Scheduled",
+                    f"Recording scheduled for '{channel.name}':\n\n"
+                    f"Start: {schedule.start_time.strftime('%Y-%m-%d %H:%M')}\n"
+                    f"End: {schedule.end_time.strftime('%Y-%m-%d %H:%M')}\n"
+                    f"Duration: {schedule.duration_minutes} minutes"
+                )
+                logger.info(f"Scheduled recording: {schedule}")
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Scheduling Failed",
+                    "Failed to add schedule. Please try again."
+                )
+
+    def on_scheduled_recording_started(self, schedule_id: str, channel_name: str):
+        """Handle scheduled recording start."""
+        logger.info(f"Scheduled recording started: {channel_name} ({schedule_id})")
+        # Could show a notification here
+
+    def on_scheduled_recording_completed(self, schedule_id: str, channel_name: str, output_path: str):
+        """Handle scheduled recording completion."""
+        logger.info(f"Scheduled recording completed: {channel_name} -> {output_path}")
+        QMessageBox.information(
+            self,
+            "Scheduled Recording Complete",
+            f"Scheduled recording for '{channel_name}' completed!\n\n"
+            f"Saved to:\n{output_path}"
+        )
+
+    def on_scheduled_recording_failed(self, schedule_id: str, channel_name: str, error_message: str):
+        """Handle scheduled recording failure."""
+        logger.error(f"Scheduled recording failed: {channel_name} - {error_message}")
+        QMessageBox.critical(
+            self,
+            "Scheduled Recording Failed",
+            f"Scheduled recording for '{channel_name}' failed:\n\n{error_message}"
+        )
+
     def attach_player_to_window(self):
         """
         Attach the VLC player to the video frame window.
@@ -974,12 +1357,22 @@ class ChooseChannelScreen(QWidget):
     def showEvent(self, event):
         """
         Called when the widget is shown.
-        
+
         Note: State machine handles player attachment during transitions,
         so we don't need to manually reattach here.
         """
         super().showEvent(event)
         logger.info("ChooseChannelScreen showEvent triggered")
+
+    def resizeEvent(self, event):
+        """Handle resize to update overlay positions."""
+        super().resizeEvent(event)
+        # Resize loading overlay to cover whole widget
+        self.loading_overlay.resize(self.size())
+        # Hide retry overlay if visible (will reposition on next show)
+        if self.retry_overlay.isVisible():
+            self.retry_overlay.resize(self.video_frame.size())
+            self.retry_overlay.move(self.video_frame.pos())
 
     def closeEvent(self, event):
         """
@@ -991,12 +1384,20 @@ class ChooseChannelScreen(QWidget):
     def _perform_full_cleanup(self, for_logout: bool = False):
         """
         Centralized cleanup for all exit scenarios.
-        
+
         Args:
             for_logout: If True, resets shared player state for clean re-login
         """
         logger.info(f"Performing cleanup (for_logout={for_logout})")
-        
+
+        # Stop the recording scheduler
+        if hasattr(self, 'recording_scheduler'):
+            try:
+                self.recording_scheduler.stop()
+                logger.info("Recording scheduler stopped")
+            except Exception as e:
+                logger.error(f"Error stopping recording scheduler: {e}")
+
         # Clean up all downloads and recordings first (may need time to finalize)
         if hasattr(self, 'download_manager'):
             try:

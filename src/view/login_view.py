@@ -1,3 +1,4 @@
+import logging
 import sys
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QListWidget, QVBoxLayout, QHBoxLayout,
@@ -8,6 +9,14 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon
 
 from src.controller.controller import Controller
+from src.utils.resource_path import resource_path
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Constants
+WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
 
 
 class CreateProfileDialog(QDialog):
@@ -19,6 +28,7 @@ class CreateProfileDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Create New Profile")
+        self.setWindowIcon(QIcon(WINDOW_ICON_PATH))
         self.setFixedSize(500, 300)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.init_ui()
@@ -138,13 +148,21 @@ class CreateProfileDialog(QDialog):
     def accept(self):
         """
         Overrides the accept method to validate inputs before closing the dialog.
+
+        Validates that both profile name and URL are provided, showing
+        specific error messages for each missing field.
         """
         name, url = self.get_inputs()
-        if not name or not url:
-            QMessageBox.warning(self, "Incomplete Data", "Please enter both name and URL for the profile.")
+        if not name and not url:
+            QMessageBox.warning(self, "Incomplete Data", "Please enter both a profile name and URL.")
+            return
+        if not name:
+            QMessageBox.warning(self, "Missing Profile Name", "Please enter a name for the profile.")
+            return
+        if not url:
+            QMessageBox.warning(self, "Missing Profile URL", "Please enter the M3U playlist URL for the profile.")
             return
         # Additional validation can be added here (e.g., URL format)
-        # print("accepted")
         super().accept()
 
 
@@ -163,6 +181,7 @@ class LoginScreen(QWidget):
     def init_ui(self):
         # Window Setup
         self.setWindowTitle("Profile Selection")
+        self.setWindowIcon(QIcon(WINDOW_ICON_PATH))
         # Use a vertical gradient for the background.
         self.setStyleSheet("""
             QWidget {
@@ -428,7 +447,7 @@ class LoginScreen(QWidget):
             self.controller.select_profile(profile_name)
             self.easy_mode_success.emit(profile.url)
         except Exception as e:
-            print(f"handle_easy_mode {e}")
+            logger.error(f"Error in handle_easy_mode: {e}")
 
     def open_create_profile_dialog(self):
         """
@@ -437,14 +456,16 @@ class LoginScreen(QWidget):
         dialog = CreateProfileDialog(self)
         if dialog.exec_() == QDialog.Accepted:
             name, url = dialog.get_inputs()
-            # print(name , url)
-            if not name or not url:
-                QMessageBox.warning(self, "Incomplete Data", "Please enter both name and URL for the profile.")
+            if not name:
+                QMessageBox.warning(self, "Missing Profile Name", "Please enter a name for the profile.")
+                return
+            if not url:
+                QMessageBox.warning(self, "Missing Profile URL", "Please enter the M3U playlist URL for the profile.")
                 return
             try:
                 self.controller.create_profile(name, url)
             except Exception as e:
-                print(e)
+                logger.error(f"Error creating profile: {e}")
 
     def show_error(self, message: str):
         """
@@ -455,9 +476,14 @@ class LoginScreen(QWidget):
         """
         QMessageBox.critical(self, "Error", message)
 
-    def update_auto_login(self, state):
-        """Update the boolean variable based on the checkbox state"""
-        self.auto_login = state == 2  # Checked (Qt.Checked) is 2, Unchecked (Qt.Unchecked) is 0
+    def update_auto_login(self, state: int) -> None:
+        """
+        Update the auto-login preference based on checkbox state.
+
+        Args:
+            state: The checkbox state value (Qt.Checked or Qt.Unchecked).
+        """
+        self.auto_login = state == Qt.Checked
 
     def closeEvent(self, event):
         """
@@ -477,10 +503,10 @@ class LoginScreen(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("Assets/your_icon.png"))
+    app.setWindowIcon(QIcon(WINDOW_ICON_PATH))
     controller = Controller()
     login_screen = LoginScreen(controller)
-    print("starting")
+    logger.info("Starting login screen")
     login_screen.show()
-    print("started")
+    logger.info("Login screen started")
     sys.exit(app.exec_())

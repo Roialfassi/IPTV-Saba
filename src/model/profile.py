@@ -247,45 +247,44 @@ class Profile:
 
     def remove_from_history(self, channel: str) -> None:
         """
-        Removes a channel from the favorites list if it exists.
+        Removes a channel from the history list if it exists.
 
         Args:
-            channel (str): The channel name to remove from favorites.
+            channel (str): The channel name to remove from history.
         """
         channel_index = self.is_in_history(channel.name)
         if channel_index > -1:
             self.history.pop(channel_index)
-            logger.info(f"Channel '{channel}' removed from History.")
+            logger.info(f"Channel '{channel}' removed from history.")
         else:
-            logger.warning(f"Attempted to remove channel '{channel}' from favorites, but it was not found.")
+            logger.warning(f"Attempted to remove channel '{channel}' from history, but it was not found.")
 
 
-    def is_in_favorites(self, name: str) -> bool:
+    def is_in_favorites(self, name: str) -> int:
         """
-        Checks if a channel is in the favorites list.
+        Checks if a channel is in the favorites list and returns its index.
 
         Args:
             name (str): The channel name to check.
 
         Returns:
-            bool: True if the channel is in favorites, False otherwise.
+            int: The index of the channel in favorites if found, -1 otherwise.
         """
         for i, channel in enumerate(self.favorites):
             if channel.name.lower() == name.lower():
                 return i
         return -1
 
-    def is_in_history(self, name: str) -> bool:
+    def is_in_history(self, name: str) -> int:
         """
-        Checks if a channel is in the History list.
+        Checks if a channel is in the history list and returns its index.
 
         Args:
             name (str): The channel name to check.
 
         Returns:
-            bool: True if the channel is in favorites, False otherwise.
+            int: The index of the channel in history if found, -1 otherwise.
         """
-
         for i, channel in enumerate(self.history):
             if channel.name.lower() == name.lower():
                 return i

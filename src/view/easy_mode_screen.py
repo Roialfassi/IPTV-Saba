@@ -1,17 +1,45 @@
+import logging
 import sys
-from typing import List, Dict
+from typing import List, Dict, Optional
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QFrame, QMessageBox, QProgressBar, QSlider)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize
 from PyQt5.QtGui import QIcon, QFont, QPainter, QColor
 import vlc
 
-from src.model.profile import create_mock_profile
+from src.model.profile import create_mock_profile, Profile
+from src.utils.resource_path import resource_path
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Constants
+HIDE_CONTROLS_DELAY_MS = 2000  # Milliseconds to wait before hiding controls
+DEFAULT_VOLUME = 50  # Default volume level (0-100)
+WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
 
 class EasyModeScreen(QWidget):
+    """
+    A simplified IPTV viewing screen designed for easy navigation.
+
+    Provides a streamlined interface with large buttons for navigating
+    through favorite channels, ideal for elderly users or remote control use.
+
+    Attributes:
+        exit_easy_mode_signal: Signal emitted when exiting Easy Mode.
+        profile: The user profile containing favorites and settings.
+        current_channel_index: Index of the currently playing channel in favorites.
+    """
     exit_easy_mode_signal = pyqtSignal()  # Signal to emit when exiting Easy Mode
 
-    def __init__(self, profile):
+    def __init__(self, profile: Profile) -> None:
+        """
+        Initialize the Easy Mode screen.
+
+        Args:
+            profile: The user profile containing favorite channels to display.
+        """
         super().__init__()
         self.profile = profile
         self.current_channel_index = 0
@@ -19,17 +47,19 @@ class EasyModeScreen(QWidget):
         self.player = self.vlc_instance.media_player_new()
         self.init_ui()
         self.play_channel()
-        self.hide_controls_timer = QTimer(self, interval=2000)  # Hide controls after 2 seconds of inactivity
+        self.hide_controls_timer = QTimer(self, interval=HIDE_CONTROLS_DELAY_MS)
         self.hide_controls_timer.timeout.connect(self.hide_controls)
         self.setMouseTracking(True)
-        self.volume = 50  # Initial volume level (0-100)
+        self.volume = DEFAULT_VOLUME
         self.player.audio_set_volume(self.volume)
-        self.hide_controls_timer.start(2000)
+        self.hide_controls_timer.start(HIDE_CONTROLS_DELAY_MS)
         self.is_fullscreen = False
 
 
-    def init_ui(self):
+    def init_ui(self) -> None:
+        """Initialize the user interface components."""
         self.setWindowTitle('IPTV Easy Mode')
+        self.setWindowIcon(QIcon(WINDOW_ICON_PATH))
         self.setStyleSheet("""
             QWidget {
                 background-color: #141414;
@@ -159,7 +189,8 @@ class EasyModeScreen(QWidget):
         # Volume control
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(50)
+        self.volume_slider.setValue(DEFAULT_VOLUME)
+        self.volume_slider.setToolTip("Adjust playback volume (0-100)")
         self.volume_slider.valueChanged.connect(self.adjust_volume)
         buttons_layout.addWidget(QLabel("Volume"))
         buttons_layout.addWidget(self.volume_slider)
@@ -175,26 +206,42 @@ class EasyModeScreen(QWidget):
         self.update_timer = QTimer(self, interval=1000)  # Update every second
 
 
-    def play_channel(self):
+    def play_channel(self) -> None:
+        """
+        Play the currently selected channel from favorites.
+
+        Loads the channel at current_channel_index and starts playback.
+        If favorites list is empty, prompts the user to add channels.
+        """
         if not self.profile.favorites:
             self.handle_empty_favorites()
             return
 
         channel = self.profile.favorites[self.current_channel_index]
-        print(channel)
+        logger.debug(f"Playing channel: {channel.name}")
         media = self.vlc_instance.media_new(channel.stream_url)
         self.player.set_media(media)
         self.player.play()
         self.channel_label.setText(channel.name)
 
-    def next_channel(self):
+    def next_channel(self) -> None:
+        """
+        Navigate to and play the next channel in favorites.
+
+        Wraps around to the first channel if at the end of the list.
+        """
         if not self.profile.favorites:
             return
 
         self.current_channel_index = (self.current_channel_index + 1) % len(self.profile.favorites)
         self.play_channel()
 
-    def previous_channel(self):
+    def previous_channel(self) -> None:
+        """
+        Navigate to and play the previous channel in favorites.
+
+        Wraps around to the last channel if at the beginning of the list.
+        """
         if not self.profile.favorites:
             return
 
@@ -210,7 +257,13 @@ class EasyModeScreen(QWidget):
         self.exit_easy_mode_signal.emit()
         self.close()
 
-    def handle_empty_favorites(self):
+    def handle_empty_favorites(self) -> None:
+        """
+        Handle the case when the favorites list is empty.
+
+        Displays a dialog informing the user and exits Easy Mode
+        regardless of user response since Easy Mode requires favorites.
+        """
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Information)
         msg.setText("Your favorites list is empty.")
@@ -226,7 +279,13 @@ class EasyModeScreen(QWidget):
         else:
             self.exit_easy_mode()
 
-    def update_ui(self):
+    def update_ui(self) -> None:
+        """
+        Periodic UI update callback.
+
+        Currently a placeholder for future enhancements such as
+        progress bar updates or stream status indicators.
+        """
         pass
         # if self.player.is_playing():
             # length = self.player.get_length()
@@ -234,21 +293,43 @@ class EasyModeScreen(QWidget):
             # if length > 0:
                 # self.progress_bar.setValue(int(time * 100 / length))
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event) -> None:
+        """
+        Handle mouse movement to show controls.
+
+        Args:
+            event: The mouse move event.
+        """
         self.show_controls()
-        self.hide_controls_timer.start(2000)  # Hide controls after 2 seconds of inactivity
+        self.hide_controls_timer.start(HIDE_CONTROLS_DELAY_MS)
 
-
-    def show_controls(self):
+    def show_controls(self) -> None:
+        """Show the control overlay and restore the cursor."""
         self.controls_widget.show()
         self.setCursor(Qt.ArrowCursor)
 
-    def hide_controls(self):
+    def hide_controls(self) -> None:
+        """Hide the control overlay and optionally hide cursor in fullscreen."""
         self.controls_widget.hide()
         if self.is_fullscreen:
             self.setCursor(Qt.BlankCursor)
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event) -> None:
+        """
+        Handle keyboard shortcuts for Easy Mode.
+
+        Supported keys:
+            - Escape: Exit fullscreen or Easy Mode
+            - Right Arrow: Next channel
+            - Left Arrow: Previous channel
+            - Space: Play/Pause toggle
+            - Up Arrow: Volume up
+            - Down Arrow: Volume down
+            - F: Toggle fullscreen
+
+        Args:
+            event: The key press event.
+        """
         if event.key() == Qt.Key_Escape:
             if self.is_fullscreen:
                 self.toggle_fullscreen()
@@ -274,30 +355,67 @@ class EasyModeScreen(QWidget):
     def closeEvent(self, event):
         """
         Handle window close with proper VLC resource cleanup.
-        
+
         Ensures VLC player and instance are properly released to prevent
         memory leaks and potential crashes.
+
+        IMPORTANT: On Windows, calling player.stop() can cause access violations
+        due to VLC's internal threading. We use a gentler approach:
+        1. Pause first (safe operation)
+        2. Set media to None
+        3. Only then release resources
         """
         # Exit fullscreen first if needed
         if self.is_fullscreen:
             self.toggle_fullscreen()
-        
-        # Proper VLC cleanup
+
+        # Proper VLC cleanup with Windows-safe approach
         try:
             if hasattr(self, 'player') and self.player:
-                self.player.stop()
-                self.player.release()
+                # Pause first instead of stop (safer on Windows)
+                try:
+                    if self.player.is_playing():
+                        self.player.set_pause(1)
+                except Exception:
+                    pass
+
+                # Set media to None to help release internal resources
+                try:
+                    self.player.set_media(None)
+                except Exception:
+                    pass
+
+                # On Windows, skip stop() as it can crash
+                if sys.platform != "win32":
+                    try:
+                        self.player.stop()
+                    except Exception:
+                        pass
+
+                try:
+                    self.player.release()
+                except Exception as e:
+                    logger.warning(f"Error releasing player: {e}")
                 self.player = None
-            
+
             if hasattr(self, 'vlc_instance') and self.vlc_instance:
-                self.vlc_instance.release()
+                try:
+                    self.vlc_instance.release()
+                except Exception as e:
+                    logger.warning(f"Error releasing VLC instance: {e}")
                 self.vlc_instance = None
         except Exception as e:
-            print(f"Error during EasyModeScreen cleanup: {e}")
-        
+            logger.error(f"Error during EasyModeScreen cleanup: {e}")
+
         event.accept()
 
-    def toggle_fullscreen(self):
+    def toggle_fullscreen(self) -> None:
+        """
+        Toggle between fullscreen and normal window mode.
+
+        In fullscreen mode, controls are initially hidden and cursor
+        is hidden after inactivity. In normal mode, controls are shown.
+        """
         if not self.is_fullscreen:
             self.showFullScreen()
             self.is_fullscreen = True
@@ -309,10 +427,15 @@ class EasyModeScreen(QWidget):
             self.is_fullscreen = False
             self.fullscreen_button.setText("Fullscreen")
             self.show_controls()
-            self.hide_controls_timer.start(2000)
+            self.hide_controls_timer.start(HIDE_CONTROLS_DELAY_MS)
 
+    def adjust_volume(self, value: int) -> None:
+        """
+        Adjust the playback volume.
 
-    def adjust_volume(self, value):
+        Args:
+            value: The new volume level (0-100).
+        """
         self.volume = value
         self.player.audio_set_volume(self.volume)
 
@@ -333,7 +456,7 @@ class MockProfile:
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     test_profile = create_mock_profile()
-    print(type(test_profile))
+    logger.info(f"Profile type: {type(test_profile)}")
     screen = EasyModeScreen(test_profile)
     screen.showFullScreen()
     sys.exit(app.exec_())

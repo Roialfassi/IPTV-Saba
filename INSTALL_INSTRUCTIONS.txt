@@ -1,0 +1,82 @@
+================================================================================
+                         IPTV-Saba Installation Guide
+================================================================================
+
+Thank you for downloading IPTV-Saba!
+
+Before running the application, please ensure you have the following:
+
+--------------------------------------------------------------------------------
+                              REQUIREMENTS
+--------------------------------------------------------------------------------
+
+1. VLC MEDIA PLAYER (REQUIRED)
+
+   IPTV-Saba uses VLC for video playback. You MUST install VLC before running
+   the application.
+
+   Download VLC from: https://www.videolan.org/vlc/
+
+   IMPORTANT:
+   - Install the 64-bit version if you're on a 64-bit Windows system
+   - Use the default installation path: C:\Program Files\VideoLAN\VLC\
+   - If you install VLC to a different location, the app may not work
+
+2. WINDOWS 10 OR WINDOWS 11
+
+   This application is designed for Windows. 64-bit is recommended.
+
+3. INTERNET CONNECTION
+
+   Required to stream IPTV channels.
+
+--------------------------------------------------------------------------------
+                              QUICK START
+--------------------------------------------------------------------------------
+
+1. Install VLC Media Player (if not already installed)
+2. Double-click IPTV-Saba.exe to run the application
+3. Create a profile with your M3U playlist URL
+4. Start watching!
+
+--------------------------------------------------------------------------------
+                              TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+Problem: "VLC not found" or black screen when playing
+Solution: Make sure VLC is installed at C:\Program Files\VideoLAN\VLC\
+
+Problem: Application won't start
+Solution:
+  - Make sure you have the latest Visual C++ Redistributable installed
+  - Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+Problem: Streams won't load
+Solution:
+  - Check your internet connection
+  - Verify your M3U playlist URL is correct and accessible
+  - Some streams may be geo-restricted or offline
+
+--------------------------------------------------------------------------------
+                              FEATURES
+--------------------------------------------------------------------------------
+
+- Multiple user profiles with separate playlists
+- Channel favorites and watch history
+- Full-screen video playback
+- Easy Mode for simplified viewing
+- Download and record streams
+- Schedule recordings
+- Quality selection for HLS streams
+- Audio track and subtitle selection
+
+--------------------------------------------------------------------------------
+                              SUPPORT
+--------------------------------------------------------------------------------
+
+For issues and feature requests, please visit:
+https://github.com/Roialfassi/IPTV-Saba
+
+================================================================================
+                         Enjoy watching IPTV-Saba!
+================================================================================

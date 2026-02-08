@@ -1,14 +1,20 @@
 import ctypes
+import logging
 import sys
 
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from src.controller.controller import Controller
+from src.utils.resource_path import resource_path
 from src.model.profile import create_mock_profile
 from src.view.easy_mode_screen import EasyModeScreen
 from src.view.login_view import LoginScreen
 from src.view.choose_channel_screen import ChooseChannelScreen
 from src.services.shared_player_manager import SharedPlayerManager
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class IPTVApp:
@@ -26,43 +32,62 @@ class IPTVApp:
     def cleanup(self):
         """
         Cleanup all shared resources when app is closing.
-        
+
         This method is called via the aboutToQuit signal and ensures:
         1. Active screens clean up their resources
         2. Easy Mode VLC instance is released
         3. Shared player manager is properly reset
+
+        IMPORTANT: VLC on Windows is prone to crashes during cleanup.
+        We use a careful approach to minimize access violations.
         """
-        print("IPTVApp: Starting application cleanup...")
-        
+        logger.info("IPTVApp: Starting application cleanup...")
+
         # Cleanup ChooseChannelScreen (downloads, recordings, etc.)
         if self.choose_channel_screen:
             try:
                 if hasattr(self.choose_channel_screen, '_perform_full_cleanup'):
                     self.choose_channel_screen._perform_full_cleanup(for_logout=False)
-                print("IPTVApp: ChooseChannelScreen cleanup complete")
+                logger.info("IPTVApp: ChooseChannelScreen cleanup complete")
             except Exception as e:
-                print(f"Error cleaning up ChooseChannelScreen: {e}")
-        
+                logger.error(f"Error cleaning up ChooseChannelScreen: {e}")
+
         # Cleanup EasyModeScreen VLC resources
         if self.easy_mode_screen:
             try:
                 if hasattr(self.easy_mode_screen, 'player') and self.easy_mode_screen.player:
-                    self.easy_mode_screen.player.stop()
-                    self.easy_mode_screen.player.release()
+                    # Pause first instead of stop to avoid Windows VLC crashes
+                    try:
+                        if self.easy_mode_screen.player.is_playing():
+                            self.easy_mode_screen.player.set_pause(1)
+                    except Exception:
+                        pass
+                    # Set media to None before release
+                    try:
+                        self.easy_mode_screen.player.set_media(None)
+                    except Exception:
+                        pass
+                    try:
+                        self.easy_mode_screen.player.release()
+                    except Exception as e:
+                        logger.warning(f"Error releasing EasyMode player: {e}")
                 if hasattr(self.easy_mode_screen, 'vlc_instance') and self.easy_mode_screen.vlc_instance:
-                    self.easy_mode_screen.vlc_instance.release()
-                print("IPTVApp: EasyModeScreen cleanup complete")
+                    try:
+                        self.easy_mode_screen.vlc_instance.release()
+                    except Exception as e:
+                        logger.warning(f"Error releasing EasyMode VLC instance: {e}")
+                logger.info("IPTVApp: EasyModeScreen cleanup complete")
             except Exception as e:
-                print(f"Error cleaning up EasyModeScreen: {e}")
-        
+                logger.error(f"Error cleaning up EasyModeScreen: {e}")
+
         # Finally, cleanup the shared player manager
         try:
             SharedPlayerManager.reset_instance()
-            print("IPTVApp: SharedPlayerManager reset complete")
+            logger.info("IPTVApp: SharedPlayerManager reset complete")
         except Exception as e:
-            print(f"Error cleaning up SharedPlayerManager: {e}")
-        
-        print("IPTVApp: Application cleanup finished")
+            logger.error(f"Error cleaning up SharedPlayerManager: {e}")
+
+        logger.info("IPTVApp: Application cleanup finished")
 
     def transition_to_login_screen(self):
         if self.choose_channel_screen:
@@ -89,7 +114,7 @@ class IPTVApp:
             self.easy_mode_screen.show()
             self.login_screen.hide()
         except Exception as e:
-            print(f"open_easy_mode_screen {e}")
+            logger.error(f"Error opening easy mode screen: {e}")
 
     def logout_choose_channel_screen(self):
         self.controller.config_manager.set_value("auto_login_enabled", False)
@@ -114,9 +139,9 @@ class IPTVApp:
 def main():
     myappid = 'RoiAlfassi.IPTV-Saba.PC-Version.1.0.0'  # Arbitrary string
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("Assets/iptv-logo2.ico"))  # This sets the taskbar icon
+    # Note: IPTVApp creates its own QApplication, don't create one here
     iptv = IPTVApp()
+    iptv.app.setWindowIcon(QIcon(resource_path("Assets/iptv-logo2.ico")))  # This sets the taskbar icon
     iptv.run()
 
 
