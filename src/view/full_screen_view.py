@@ -26,6 +26,68 @@ HIDE_CONTROLS_MOUSE_DELAY_MS = 5000  # Delay when mouse moves
 DEFAULT_VOLUME = 50  # Default volume level (0-100)
 WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
 
+# Shared combo box style
+COMBO_STYLE = """
+    QComboBox {
+        background-color: #2c2c2c;
+        color: white;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 4px 8px;
+        min-width: 100px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    QComboBox:hover {
+        border: 1px solid #E50914;
+    }
+    QComboBox::drop-down {
+        border: none;
+    }
+    QComboBox QAbstractItemView {
+        background-color: #2c2c2c;
+        color: white;
+        selection-background-color: #E50914;
+    }
+"""
+
+# Shared button style for row-1 buttons
+ROW1_BUTTON_STYLE = """
+    QPushButton {
+        background-color: rgba(229, 9, 20, 0.8);
+        border: none;
+        color: white;
+        padding: 6px 14px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: bold;
+        margin: 2px 1px;
+        border-radius: 6px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    QPushButton:hover {
+        background-color: rgba(229, 9, 20, 1);
+    }
+"""
+
+# Shared button style for row-2 secondary buttons
+ROW2_BUTTON_STYLE = """
+    QPushButton {
+        background-color: rgba(44, 44, 44, 0.8);
+        border: 1px solid #444;
+        color: white;
+        padding: 5px 10px;
+        text-align: center;
+        font-size: 12px;
+        margin: 2px 1px;
+        border-radius: 6px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    QPushButton:hover {
+        background-color: rgba(229, 9, 20, 0.8);
+        border: 1px solid #E50914;
+    }
+"""
+
 
 class FullScreenView(QWidget):
     """
@@ -81,188 +143,133 @@ class FullScreenView(QWidget):
             QWidget {
                 background-color: #141414;
                 color: #FFFFFF;
-                font-family: Arial, sans-serif;
+                font-family: 'Segoe UI', Arial, sans-serif;
             }
         """)
 
         # Main layout
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
         # Video frame
         self.video_frame = QFrame()
         self.video_frame.setStyleSheet("background-color: black;")
         main_layout.addWidget(self.video_frame, 1)
 
-        # Controls layout
+        # Controls container with gradient background
         self.controls_widget = QWidget(self)
-        controls_layout = QHBoxLayout(self.controls_widget)
-        controls_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.addWidget(self.controls_widget)
-
-        # Back Button
-        self.back_button = QPushButton("Back to Channels")
-        self.back_button.clicked.connect(self.go_back)
-        self.back_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(229, 9, 20, 0.8);
-                border: none;
-                color: white;
-                padding: 5px 10px;
-                text-align: center;
-                font-size: 12px;
-                margin: 2px 1px;
-                border-radius: 2px;
+        self.controls_widget.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(0,0,0,0),
+                    stop:0.3 rgba(0,0,0,80),
+                    stop:1 rgba(0,0,0,220));
             }
-            QPushButton:hover {
-                background-color: rgba(229, 9, 20, 1);
+            QLabel {
+                background: transparent;
             }
         """)
-        controls_layout.addWidget(self.back_button)
+        controls_outer_layout = QVBoxLayout(self.controls_widget)
+        controls_outer_layout.setContentsMargins(12, 20, 12, 10)
+        controls_outer_layout.setSpacing(6)
+
+        # === Row 1: Back, Play/Pause, Volume, Channel name ===
+        row1_layout = QHBoxLayout()
+        row1_layout.setSpacing(8)
+
+        # Back Button
+        self.back_button = QPushButton("Back")
+        self.back_button.setToolTip("Return to channel browser (Escape)")
+        self.back_button.clicked.connect(self.go_back)
+        self.back_button.setStyleSheet(ROW1_BUTTON_STYLE)
+        row1_layout.addWidget(self.back_button)
 
         # Play/Pause Button
         self.play_pause_button = QPushButton("Pause")
+        self.play_pause_button.setToolTip("Play / Pause (Space)")
         self.play_pause_button.clicked.connect(self.toggle_play_pause)
-        self.play_pause_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(229, 9, 20, 0.8);
-                border: none;
-                color: white;
-                padding: 5px 10px;
-                text-align: center;
-                font-size: 12px;
-                margin: 2px 1px;
-                border-radius: 2px;
-            }
-            QPushButton:hover {
-                background-color: rgba(229, 9, 20, 1);
-            }
-        """)
-        controls_layout.addWidget(self.play_pause_button)
+        self.play_pause_button.setStyleSheet(ROW1_BUTTON_STYLE)
+        row1_layout.addWidget(self.play_pause_button)
 
         # Volume Slider
+        vol_label = QLabel("Vol")
+        vol_label.setStyleSheet("font-size: 12px; background: transparent;")
+        row1_layout.addWidget(vol_label)
+
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(DEFAULT_VOLUME)
         self.volume_slider.setToolTip("Adjust playback volume (0-100)")
+        self.volume_slider.setFixedWidth(120)
         self.volume_slider.valueChanged.connect(self.set_volume)
-        controls_layout.addWidget(QLabel("Volume"))
-        controls_layout.addWidget(self.volume_slider)
+        row1_layout.addWidget(self.volume_slider)
+
+        # Volume percentage label
+        self.volume_percent_label = QLabel(f"{DEFAULT_VOLUME}%")
+        self.volume_percent_label.setFixedWidth(40)
+        self.volume_percent_label.setStyleSheet("font-size: 12px; background: transparent;")
+        row1_layout.addWidget(self.volume_percent_label)
+
+        row1_layout.addStretch()
+
+        # Channel name label (inline in row 1)
+        self.channel_label = QLabel(self.channel_name)
+        self.channel_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.channel_label.setStyleSheet("font-size: 14px; font-weight: bold; background: transparent;")
+        row1_layout.addWidget(self.channel_label)
+
+        controls_outer_layout.addLayout(row1_layout)
+
+        # === Row 2: Audio, Subtitles, SRT, Quality ===
+        row2_layout = QHBoxLayout()
+        row2_layout.setSpacing(8)
 
         # Audio Track Combo Box
-        controls_layout.addWidget(QLabel("Audio:"))
+        audio_label = QLabel("Audio:")
+        audio_label.setStyleSheet("font-size: 12px; background: transparent;")
+        row2_layout.addWidget(audio_label)
         self.audio_combo = QComboBox()
         self.audio_combo.setMinimumWidth(120)
         self.audio_combo.setToolTip("Select audio track")
-        self.audio_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #2c2c2c;
-                color: white;
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-width: 100px;
-            }
-            QComboBox:hover {
-                border: 1px solid #E50914;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2c2c2c;
-                color: white;
-                selection-background-color: #E50914;
-            }
-        """)
+        self.audio_combo.setStyleSheet(COMBO_STYLE)
         self.audio_combo.currentIndexChanged.connect(self._on_audio_track_selected)
-        controls_layout.addWidget(self.audio_combo)
+        row2_layout.addWidget(self.audio_combo)
 
         # Subtitle Track Combo Box
-        controls_layout.addWidget(QLabel("Subtitles:"))
+        sub_label = QLabel("Subtitles:")
+        sub_label.setStyleSheet("font-size: 12px; background: transparent;")
+        row2_layout.addWidget(sub_label)
         self.subtitle_combo = QComboBox()
         self.subtitle_combo.setMinimumWidth(120)
         self.subtitle_combo.setToolTip("Select subtitle track")
-        self.subtitle_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #2c2c2c;
-                color: white;
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-width: 100px;
-            }
-            QComboBox:hover {
-                border: 1px solid #E50914;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2c2c2c;
-                color: white;
-                selection-background-color: #E50914;
-            }
-        """)
+        self.subtitle_combo.setStyleSheet(COMBO_STYLE)
         self.subtitle_combo.currentIndexChanged.connect(self._on_subtitle_track_selected)
-        controls_layout.addWidget(self.subtitle_combo)
+        row2_layout.addWidget(self.subtitle_combo)
 
         # Load External Subtitle Button
         self.load_subtitle_button = QPushButton("Load SRT")
-        self.load_subtitle_button.setToolTip("Load external subtitle file")
+        self.load_subtitle_button.setToolTip("Load external subtitle file (.srt, .sub, .ass)")
         self.load_subtitle_button.clicked.connect(self._load_external_subtitle)
-        self.load_subtitle_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(44, 44, 44, 0.8);
-                border: 1px solid #444;
-                color: white;
-                padding: 5px 10px;
-                text-align: center;
-                font-size: 12px;
-                margin: 2px 1px;
-                border-radius: 2px;
-            }
-            QPushButton:hover {
-                background-color: rgba(229, 9, 20, 0.8);
-                border: 1px solid #E50914;
-            }
-        """)
-        controls_layout.addWidget(self.load_subtitle_button)
+        self.load_subtitle_button.setStyleSheet(ROW2_BUTTON_STYLE)
+        row2_layout.addWidget(self.load_subtitle_button)
 
         # Quality Selection Combo Box
-        controls_layout.addWidget(QLabel("Quality:"))
+        quality_label = QLabel("Quality:")
+        quality_label.setStyleSheet("font-size: 12px; background: transparent;")
+        row2_layout.addWidget(quality_label)
         self.quality_combo = QComboBox()
         self.quality_combo.setMinimumWidth(100)
         self.quality_combo.setToolTip("Select stream quality")
         self.quality_combo.addItem("Auto", 0)
-        self.quality_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #2c2c2c;
-                color: white;
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-width: 80px;
-            }
-            QComboBox:hover {
-                border: 1px solid #E50914;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2c2c2c;
-                color: white;
-                selection-background-color: #E50914;
-            }
-        """)
+        self.quality_combo.setStyleSheet(COMBO_STYLE)
         self.quality_combo.currentIndexChanged.connect(self._on_quality_selected)
-        controls_layout.addWidget(self.quality_combo)
+        row2_layout.addWidget(self.quality_combo)
 
-        # Channel name label
-        self.channel_label = QLabel(self.channel_name)
-        self.channel_label.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(self.channel_label)
+        row2_layout.addStretch()
+        controls_outer_layout.addLayout(row2_layout)
+
+        main_layout.addWidget(self.controls_widget)
 
         # Timer to update the UI
         self.update_timer = QTimer(self)
@@ -285,20 +292,20 @@ class FullScreenView(QWidget):
         try:
             win_id = int(self.video_frame.winId())
             logger.info(f"FullScreenView: Attempting to attach player to window ID: {win_id}")
-            
+
             # Check if player was playing before attachment
             was_playing = self.player.is_playing()
             logger.info(f"FullScreenView: Player was_playing={was_playing}")
 
             if sys.platform.startswith('linux'):
                 self.player.set_xwindow(win_id)
-                logger.info(f"✓ Attached player to Linux X11 window: {win_id}")
+                logger.info(f"Attached player to Linux X11 window: {win_id}")
             elif sys.platform == "win32":
                 self.player.set_hwnd(win_id)
-                logger.info(f"✓ Attached player to Windows HWND: {win_id}")
+                logger.info(f"Attached player to Windows HWND: {win_id}")
             elif sys.platform == "darwin":
                 self.player.set_nsobject(win_id)
-                logger.info(f"✓ Attached player to macOS NSObject: {win_id}")
+                logger.info(f"Attached player to macOS NSObject: {win_id}")
             else:
                 logger.error(f"Unsupported platform: {sys.platform}")
                 return
@@ -311,23 +318,23 @@ class FullScreenView(QWidget):
             logger.error(f"Error attaching player to window: {e}")
             import traceback
             traceback.print_exc()
-    
+
     def _refresh_video_after_attach(self):
         """Force the video to refresh after attaching to new window."""
         try:
             if not self.player:
                 return
-                
+
             logger.info(f"FullScreenView: Refreshing video. is_playing={self.player.is_playing()}")
-            
+
             if self.player.is_playing():
                 # Save position
                 current_pos = self.player.get_position()
                 logger.info(f"FullScreenView: Current position before refresh: {current_pos}")
-                
+
                 # The trick: pause briefly, then resume to force re-render to new window
                 self.player.pause()
-                
+
                 def resume_playback():
                     if self.player:
                         self.player.play()
@@ -335,26 +342,26 @@ class FullScreenView(QWidget):
                         # Restore position if needed
                         if current_pos and current_pos > 0.0:
                             QTimer.singleShot(50, lambda: self.player.set_position(current_pos))
-                
+
                 QTimer.singleShot(100, resume_playback)
             else:
                 # Player wasn't playing, start it
                 logger.info("FullScreenView: Player not playing - starting playback")
                 self.player.play()
-                
+
         except Exception as e:
             logger.error(f"Error refreshing video: {e}")
 
     def showEvent(self, event):
         """
         Called when the widget is shown.
-        
-        If using shared player (state machine), don't attach here - the 
-        SharedPlayerManager handles the transition. Only attach if we 
+
+        If using shared player (state machine), don't attach here - the
+        SharedPlayerManager handles the transition. Only attach if we
         created our own player.
         """
         super().showEvent(event)
-        
+
         if self.using_shared_player:
             # SharedPlayerManager's state machine handles attachment
             logger.info("FullScreenView showEvent - using shared player (state machine handles attachment)")
@@ -391,6 +398,7 @@ class FullScreenView(QWidget):
         Set the volume of the player.
         """
         self.player.audio_set_volume(volume)
+        self.volume_percent_label.setText(f"{volume}%")
 
     def go_back(self):
         """
@@ -404,6 +412,10 @@ class FullScreenView(QWidget):
         """
         Handle key events for basic control: back, mute/unmute, and volume control.
         """
+        # Show controls and reset hide timer on any keypress
+        self.show_controls()
+        self.hide_controls_timer.start(HIDE_CONTROLS_MOUSE_DELAY_MS)
+
         if event.key() == Qt.Key_Escape:
             self.go_back()
         elif event.key() == Qt.Key_Space:
@@ -485,8 +497,6 @@ class FullScreenView(QWidget):
 
     def hide_controls(self):
         self.controls_widget.hide()
-        # if self.is_fullscreen:
-        #     self.setCursor(Qt.BlankCursor)
 
     # ==================== Audio/Subtitle Track Methods ====================
 

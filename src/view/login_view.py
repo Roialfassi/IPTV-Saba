@@ -55,7 +55,7 @@ class CreateProfileDialog(QDialog):
             QLineEdit {
                 padding: 10px;
                 border: 2px solid #444;
-                border-radius: 5px;
+                border-radius: 6px;
                 background-color: #2c2c2c;
                 color: white;
             }
@@ -73,7 +73,7 @@ class CreateProfileDialog(QDialog):
             QLineEdit {
                 padding: 10px;
                 border: 2px solid #444;
-                border-radius: 5px;
+                border-radius: 6px;
                 background-color: #2c2c2c;
                 color: white;
             }
@@ -97,7 +97,7 @@ class CreateProfileDialog(QDialog):
                 color: white;
                 border: none;
                 padding: 10px 20px;
-                border-radius: 5px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #f40612;
@@ -119,7 +119,7 @@ class CreateProfileDialog(QDialog):
                 color: white;
                 border: none;
                 padding: 10px 20px;
-                border-radius: 5px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #145dbf;
@@ -188,7 +188,7 @@ class LoginScreen(QWidget):
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                                             stop:0 #141414, stop:1 #000000);
                 color: white;
-                font-family: 'Netflix Sans', Arial, sans-serif;
+                font-family: 'Segoe UI', Arial, sans-serif;
             }
         """)
 
@@ -242,7 +242,7 @@ class LoginScreen(QWidget):
             QScrollBar::handle:vertical {
                 background-color: #E50914;
                 min-height: 20px;
-                border-radius: 5px;
+                border-radius: 6px;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
@@ -304,6 +304,7 @@ class LoginScreen(QWidget):
 
         # Login Button
         self.login_button = QPushButton("Login")
+        self.login_button.setToolTip("Log in with the selected profile")
         self.login_button.setFont(QFont("Segoe UI", 12, QFont.Bold))
         self.login_button.setCursor(Qt.PointingHandCursor)
         self.login_button.setStyleSheet("""
@@ -312,7 +313,7 @@ class LoginScreen(QWidget):
                 color: white;
                 border: none;
                 padding: 10px 15px;
-                border-radius: 5px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #ff0909;
@@ -330,6 +331,7 @@ class LoginScreen(QWidget):
 
         # Easy Mode Button
         self.easy_mode_button = QPushButton("Easy Mode")
+        self.easy_mode_button.setToolTip("Launch simplified Easy Mode for favorites")
         self.easy_mode_button.setFont(QFont("Segoe UI", 12, QFont.Bold))
         self.easy_mode_button.setCursor(Qt.PointingHandCursor)
         self.easy_mode_button.setStyleSheet("""
@@ -338,7 +340,7 @@ class LoginScreen(QWidget):
                 color: white;
                 border: none;
                 padding: 10px 15px;
-                border-radius: 5px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #ff3a11;
@@ -356,6 +358,7 @@ class LoginScreen(QWidget):
 
         # Create Profile Button
         self.create_profile_button = QPushButton("Create Profile")
+        self.create_profile_button.setToolTip("Create a new profile with an M3U playlist URL")
         self.create_profile_button.setFont(QFont("Segoe UI", 12, QFont.Bold))
         self.create_profile_button.setCursor(Qt.PointingHandCursor)
         self.create_profile_button.setStyleSheet("""
@@ -364,7 +367,7 @@ class LoginScreen(QWidget):
                 color: white;
                 border: none;
                 padding: 10px 15px;
-                border-radius: 5px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #145dbf;

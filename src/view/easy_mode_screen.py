@@ -64,7 +64,7 @@ class EasyModeScreen(QWidget):
             QWidget {
                 background-color: #141414;
                 color: #FFFFFF;
-                font-family: Arial, sans-serif;
+                font-family: 'Segoe UI', Arial, sans-serif;
             }
             QLabel {
                 font-size: 24px;
@@ -102,28 +102,26 @@ class EasyModeScreen(QWidget):
         channel_info_layout.addWidget(self.channel_label)
         controls_layout.addLayout(channel_info_layout)
 
-        # Progress bar
-        # self.progress_bar = QProgressBar()
-        # self.progress_bar.setTextVisible(False)
-        # self.progress_bar.setRange(0, 100)
-        # controls_layout.addWidget(self.progress_bar)
-
-        # Buttons
+        # Buttons row
         buttons_layout = QHBoxLayout()
         buttons_layout.setAlignment(Qt.AlignCenter)
+        buttons_layout.setSpacing(12)
 
-        self.prev_button = QPushButton("Previous")
+        self.prev_button = QPushButton("\u25C0  Previous")
+        self.prev_button.setToolTip("Previous channel (Left arrow)")
         self.prev_button.clicked.connect(self.previous_channel)
         self.prev_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(229, 9, 20, 0.8);
                 border: none;
                 color: white;
-                padding: 10px 20px;
+                padding: 14px 24px;
                 text-align: center;
-                font-size: 16px;
+                font-size: 20px;
+                font-weight: bold;
+                min-width: 150px;
                 margin: 4px 2px;
-                border-radius: 4px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: rgba(229, 9, 20, 1);
@@ -131,18 +129,21 @@ class EasyModeScreen(QWidget):
         """)
         buttons_layout.addWidget(self.prev_button)
 
-        self.next_button = QPushButton("Next")
+        self.next_button = QPushButton("Next  \u25B6")
+        self.next_button.setToolTip("Next channel (Right arrow)")
         self.next_button.clicked.connect(self.next_channel)
         self.next_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(229, 9, 20, 0.8);
                 border: none;
                 color: white;
-                padding: 10px 20px;
+                padding: 14px 24px;
                 text-align: center;
-                font-size: 16px;
+                font-size: 20px;
+                font-weight: bold;
+                min-width: 150px;
                 margin: 4px 2px;
-                border-radius: 4px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: rgba(229, 9, 20, 1);
@@ -151,51 +152,106 @@ class EasyModeScreen(QWidget):
         buttons_layout.addWidget(self.next_button)
 
         self.exit_button = QPushButton("Exit Easy Mode")
+        self.exit_button.setToolTip("Return to main interface (Escape)")
         self.exit_button.clicked.connect(self.exit_easy_mode)
         self.exit_button.setStyleSheet("""
             QPushButton {
-                background-color: rgba(255, 255, 255, 0.2);
-                border: none;
+                background-color: #444444;
+                border: 1px solid #666;
                 color: white;
-                padding: 10px 20px;
+                padding: 14px 24px;
                 text-align: center;
-                font-size: 16px;
-                border-radius: 4px;
+                font-size: 20px;
+                font-weight: bold;
+                border-radius: 6px;
             }
             QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.3);
+                background-color: #555555;
             }
         """)
         buttons_layout.addWidget(self.exit_button)
 
         self.fullscreen_button = QPushButton("Fullscreen")
+        self.fullscreen_button.setToolTip("Toggle fullscreen (F)")
         self.fullscreen_button.clicked.connect(self.toggle_fullscreen)
         self.fullscreen_button.setStyleSheet("""
             QPushButton {
-                background-color: rgba(255, 255, 255, 0.2);
-                border: none;
+                background-color: #2c5282;
+                border: 1px solid #3b6aa0;
                 color: white;
-                padding: 10px 20px;
+                padding: 14px 24px;
                 text-align: center;
-                font-size: 16px;
-                border-radius: 4px;
+                font-size: 20px;
+                font-weight: bold;
+                border-radius: 6px;
             }
             QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.3);
+                background-color: #3b6aa0;
             }
         """)
         buttons_layout.addWidget(self.fullscreen_button)
 
-        # Volume control
+        controls_layout.addLayout(buttons_layout)
+
+        # Volume controls row
+        volume_layout = QHBoxLayout()
+        volume_layout.setAlignment(Qt.AlignCenter)
+        volume_layout.setSpacing(10)
+
+        self.vol_down_button = QPushButton("Vol -")
+        self.vol_down_button.setToolTip("Decrease volume (Down arrow)")
+        self.vol_down_button.clicked.connect(lambda: self._adjust_volume_step(-5))
+        self.vol_down_button.setFixedSize(70, 50)
+        self.vol_down_button.setStyleSheet("""
+            QPushButton {
+                background-color: #444444;
+                border: 1px solid #666;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #555555;
+            }
+        """)
+        volume_layout.addWidget(self.vol_down_button)
+
+        self.volume_label = QLabel(f"{DEFAULT_VOLUME}%")
+        self.volume_label.setAlignment(Qt.AlignCenter)
+        self.volume_label.setFixedWidth(80)
+        self.volume_label.setStyleSheet("font-size: 20px; font-weight: bold;")
+        volume_layout.addWidget(self.volume_label)
+
+        self.vol_up_button = QPushButton("Vol +")
+        self.vol_up_button.setToolTip("Increase volume (Up arrow)")
+        self.vol_up_button.clicked.connect(lambda: self._adjust_volume_step(5))
+        self.vol_up_button.setFixedSize(70, 50)
+        self.vol_up_button.setStyleSheet("""
+            QPushButton {
+                background-color: #444444;
+                border: 1px solid #666;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #555555;
+            }
+        """)
+        volume_layout.addWidget(self.vol_up_button)
+
+        # Keep the slider for programmatic use but also as an option
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(DEFAULT_VOLUME)
         self.volume_slider.setToolTip("Adjust playback volume (0-100)")
+        self.volume_slider.setFixedWidth(200)
         self.volume_slider.valueChanged.connect(self.adjust_volume)
-        buttons_layout.addWidget(QLabel("Volume"))
-        buttons_layout.addWidget(self.volume_slider)
+        volume_layout.addWidget(self.volume_slider)
 
-        controls_layout.addLayout(buttons_layout)
+        controls_layout.addLayout(volume_layout)
 
         main_layout.addWidget(self.controls_widget)
 
@@ -205,6 +261,10 @@ class EasyModeScreen(QWidget):
         # Update UI timer
         self.update_timer = QTimer(self, interval=1000)  # Update every second
 
+    def _adjust_volume_step(self, step: int) -> None:
+        """Adjust volume by a step amount via buttons."""
+        new_val = max(0, min(100, self.volume_slider.value() + step))
+        self.volume_slider.setValue(new_val)
 
     def play_channel(self) -> None:
         """
@@ -222,7 +282,9 @@ class EasyModeScreen(QWidget):
         media = self.vlc_instance.media_new(channel.stream_url)
         self.player.set_media(media)
         self.player.play()
-        self.channel_label.setText(channel.name)
+        total = len(self.profile.favorites)
+        pos = self.current_channel_index + 1
+        self.channel_label.setText(f"{channel.name}  (Channel {pos} / {total})")
 
     def next_channel(self) -> None:
         """
@@ -251,7 +313,7 @@ class EasyModeScreen(QWidget):
     def exit_easy_mode(self):
         """
         Exit Easy Mode with proper resource cleanup.
-        
+
         Note: close() will trigger closeEvent which handles the actual cleanup.
         """
         self.exit_easy_mode_signal.emit()
@@ -287,11 +349,6 @@ class EasyModeScreen(QWidget):
         progress bar updates or stream status indicators.
         """
         pass
-        # if self.player.is_playing():
-            # length = self.player.get_length()
-            # time = self.player.get_time()
-            # if length > 0:
-                # self.progress_bar.setValue(int(time * 100 / length))
 
     def mouseMoveEvent(self, event) -> None:
         """
@@ -330,6 +387,10 @@ class EasyModeScreen(QWidget):
         Args:
             event: The key press event.
         """
+        # Show controls and reset hide timer on any keypress
+        self.show_controls()
+        self.hide_controls_timer.start(HIDE_CONTROLS_DELAY_MS)
+
         if event.key() == Qt.Key_Escape:
             if self.is_fullscreen:
                 self.toggle_fullscreen()
@@ -438,6 +499,7 @@ class EasyModeScreen(QWidget):
         """
         self.volume = value
         self.player.audio_set_volume(self.volume)
+        self.volume_label.setText(f"{value}%")
 
 
 # Mock class for testing

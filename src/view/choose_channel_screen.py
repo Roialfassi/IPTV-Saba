@@ -1,13 +1,14 @@
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QListWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QSlider, QMessageBox, QSplitter,
     QApplication, QSizePolicy, QMenu, QAction, QGraphicsOpacityEffect,
-    QComboBox, QFileDialog, QFrame
+    QComboBox, QFileDialog, QFrame, QListWidgetItem, QProgressBar
 )
 from PyQt5.QtCore import Qt, pyqtSlot, QObject, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve, QThread, QParallelAnimationGroup
 from PyQt5.QtGui import QFont, QIcon
@@ -23,6 +24,7 @@ from src.services.download_record_manager import DownloadRecordManager
 from src.services.shared_player_manager import SharedPlayerManager, get_shared_player
 from src.view.retry_overlay import RetryOverlay
 from src.view.schedule_dialog import ScheduleRecordingDialog
+from src.view.downloads_panel import DownloadsPanel
 from src.services.schedule_manager import ScheduleManager
 from src.services.recording_scheduler import RecordingScheduler
 from src.utils.resource_path import resource_path
@@ -38,7 +40,7 @@ WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
 class LoaderWorker(QObject):
     """
     Worker thread for loading IPTV data without blocking the UI.
-    
+
     Thread Safety:
     - Creates its own DataLoader instance to avoid shared state issues
     - Only accesses thread-safe profile data (copies made at init time)
@@ -46,7 +48,7 @@ class LoaderWorker(QObject):
     """
     finished = pyqtSignal()
     data_loaded = pyqtSignal(object)  # Emits the loaded DataLoader with groups
-    progress = pyqtSignal(int)  # Progress percentage (0-100)   
+    progress = pyqtSignal(int)  # Progress percentage (0-100)
     progress_message = pyqtSignal(str)  # Status message
     error = pyqtSignal(str)
 
@@ -54,17 +56,17 @@ class LoaderWorker(QObject):
         super().__init__()
         # Store references to controller components
         self.controller = controller
-        
+
         # Copy the data we need to avoid accessing shared state from worker thread
         self.source = str(controller.active_profile.url)  # Make a copy
         self.profile_name = str(controller.active_profile.name)  # Make a copy
         self.config_dir = str(controller.config_dir)  # Make a copy
         self.is_within_24_hours = controller.active_profile.is_within_24_hours()
-        
+
         # Create a dedicated DataLoader for this worker thread (thread safety)
         from src.data.data_loader import DataLoader
         self.loader = DataLoader()
-        
+
         # Keep reference to the controller's loader to update after loading
         self.controller_loader = controller.data_loader
 
@@ -78,7 +80,7 @@ class LoaderWorker(QObject):
     def run(self):
         try:
             data_path = Path(os.path.join(self.config_dir, (self.profile_name + "data.json")))
-            
+
             # Load from File if cache is valid
             if self.is_within_24_hours and data_path.is_file():
                 logger.info("Loading Data from file since last login was recently")
@@ -103,15 +105,15 @@ class LoaderWorker(QObject):
                 else:
                     self.progress_message.emit("Saving to cache...")
                     self.loader.save_to_json(data_path)
-                    
+
                     # Update profile in main thread via controller (thread-safe via signals)
                     self.controller.active_profile.update_last_loaded()
                     self.controller.profile_manager.update_profile(self.controller.active_profile)
                     self.controller.profile_manager.export_profiles(self.controller.profile_path)
-            
+
             # Transfer loaded data to the controller's loader (on main thread via signal)
             self.data_loaded.emit(self.loader)
-            
+
             self.progress_message.emit("Loading complete!")
             self.finished.emit()
 
@@ -125,9 +127,9 @@ class LoaderWorker(QObject):
 
 class LoadingOverlay(QWidget):
     """Custom overlay widget with loading animation"""
-    
+
     # Unicode spinner characters for animation
-    SPINNER_CHARS = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    SPINNER_CHARS = ['\u280B', '\u2819', '\u2839', '\u2838', '\u283C', '\u2834', '\u2826', '\u2827', '\u2807', '\u280F']
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -206,10 +208,10 @@ class ChooseChannelScreen(QWidget):
     def __init__(self, controller: Controller, parent=None):
         super().__init__(parent)
         self.all_groups = {}  # Keep a copy for filtering
+        self.all_channels = []  # List of raw channel names for filtering
         self.controller = controller
         self.init_ui()
         self.connect_signals()
-        # self.load_groups()
         self.active_channel = None
         self.fullscreen_view = None
         self.thread = None
@@ -222,6 +224,7 @@ class ChooseChannelScreen(QWidget):
 
         # Track active downloads/recordings
         self.active_recordings = {}  # {channel_name: recording_id}
+        self._active_download_id = None  # Track current download for status bar
 
         # Initialize scheduled recording system
         self.schedule_manager = ScheduleManager(controller.config_dir)
@@ -251,75 +254,75 @@ class ChooseChannelScreen(QWidget):
         self.resize(1200, 700)
 
         # Overall stylesheet for a futuristic look with a compact header
-        self.setStyleSheet("""       
+        self.setStyleSheet("""
             QWidget {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                             stop:0 #121212, stop:1 #0d0d0d);
                 color: #FFFFFF;
-                font-family: 'Netflix Sans', Arial, sans-serif;
+                font-family: 'Segoe UI', Arial, sans-serif;
             }
-            
+
             /* Compact Header styling */
             QLabel#headerLabel {
                 font-size: 20px;
                 font-weight: bold;
                 color: #E50914;
             }
-            
+
             QWidget#headerWidget {
                 background-color: #1a1a1a;
                 border-bottom: 1px solid #333;
             }
-            
+
             /* List and input fields */
             QListWidget, QLineEdit {
                 background-color: #2c2c2c;
                 border: 1px solid #444;
-                border-radius: 4px;
+                border-radius: 6px;
                 padding: 6px;
                 color: #FFFFFF;
             }
-            
+
             QListWidget::item:selected {
                 background-color: #E50914;
                 color: #FFFFFF;
             }
-            
+
             QLineEdit:focus, QListWidget:focus {
                 border: 1px solid #E50914;
             }
-            
+
             /* Buttons */
             QPushButton {
                 background-color: #E50914;
                 color: #FFFFFF;
                 border: none;
                 padding: 8px 16px;
-                border-radius: 4px;
+                border-radius: 6px;
                 font-weight: 600;
                 font-size: 16px;
             }
-            
+
             QPushButton:hover {
                 background-color: #F6121D;
             }
-            
+
             QPushButton:pressed {
                 background-color: #BF0811;
             }
-            
+
             QPushButton:disabled {
                 background-color: #444;
                 color: #888;
             }
-            
+
             /* Sliders */
             QSlider::groove:horizontal {
                 height: 4px;
                 background: #444;
                 border-radius: 2px;
             }
-            
+
             QSlider::handle:horizontal {
                 background: #E50914;
                 width: 14px;
@@ -343,6 +346,7 @@ class ChooseChannelScreen(QWidget):
         header_layout.addStretch()
 
         self.logout_button = QPushButton("Logout")
+        self.logout_button.setToolTip("Log out and return to profile selection")
         header_layout.addWidget(self.logout_button)
         self.logout_button.clicked.connect(self.logout)
         main_layout.addWidget(header_widget)
@@ -397,7 +401,8 @@ class ChooseChannelScreen(QWidget):
         self.video_frame = QWidget()
         self.video_frame.setStyleSheet("background-color: #000000;")
         self.video_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        right_layout.addWidget(self.video_frame)
+        self.video_frame.setMinimumHeight(200)
+        right_layout.addWidget(self.video_frame, 1)  # stretch=1: video gets all extra space
 
         # Use shared player manager for seamless transitions
         self.shared_player = get_shared_player()
@@ -406,7 +411,7 @@ class ChooseChannelScreen(QWidget):
         # Keep references for backward compatibility
         self.player = self.shared_player.player
         self.instance = self.shared_player.vlc_instance
-        
+
         # Connect shared player signals for error handling and feedback
         self.shared_player.stream_error.connect(self._on_stream_error)
         self.shared_player.connection_timeout.connect(self._on_connection_timeout)
@@ -428,13 +433,46 @@ class ChooseChannelScreen(QWidget):
         controls_layout = QHBoxLayout()
         controls_layout.setSpacing(10)
         self.play_button = QPushButton("Play")
+        self.play_button.setToolTip("Resume playback")
         controls_layout.addWidget(self.play_button)
         self.pause_button = QPushButton("Pause")
+        self.pause_button.setToolTip("Pause playback")
         controls_layout.addWidget(self.pause_button)
         self.stop_button = QPushButton("Stop")
+        self.stop_button.setToolTip("Stop playback")
         controls_layout.addWidget(self.stop_button)
         self.fullscreen_button = QPushButton("Fullscreen")
+        self.fullscreen_button.setToolTip("Open fullscreen player")
         controls_layout.addWidget(self.fullscreen_button)
+
+        # Record/Download button
+        self.record_download_button = QPushButton("Record")
+        self.record_download_button.setToolTip("Record live stream or download media file")
+        self.record_download_button.setStyleSheet("""
+            QPushButton {
+                background-color: #1877F2;
+                color: #FFFFFF;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: 600;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #145dbf;
+            }
+            QPushButton:pressed {
+                background-color: #0d4ea2;
+            }
+            QPushButton:disabled {
+                background-color: #444;
+                color: #888;
+            }
+        """)
+        self.record_download_button.setEnabled(False)
+        self.record_download_button.clicked.connect(self._on_record_download_clicked)
+        controls_layout.addWidget(self.record_download_button)
+
         volume_layout = QHBoxLayout()
         volume_label = QLabel("Volume")
         volume_layout.addWidget(volume_label)
@@ -449,14 +487,14 @@ class ChooseChannelScreen(QWidget):
 
         # ---------- Collapsible Advanced Controls Section ----------
         # Toggle button for advanced controls
-        self.advanced_toggle_button = QPushButton("▼ Advanced Controls")
+        self.advanced_toggle_button = QPushButton("\u25BC Advanced Controls")
         self.advanced_toggle_button.setStyleSheet("""
             QPushButton {
                 background-color: #333;
                 color: #aaa;
                 border: none;
                 padding: 5px 10px;
-                border-radius: 3px;
+                border-radius: 6px;
                 font-size: 12px;
                 text-align: left;
             }
@@ -465,6 +503,7 @@ class ChooseChannelScreen(QWidget):
                 color: #fff;
             }
         """)
+        self.advanced_toggle_button.setToolTip("Show/hide audio, subtitle, and quality controls")
         self.advanced_toggle_button.setCursor(Qt.PointingHandCursor)
         self.advanced_toggle_button.clicked.connect(self._toggle_advanced_controls)
         right_layout.addWidget(self.advanced_toggle_button)
@@ -475,7 +514,7 @@ class ChooseChannelScreen(QWidget):
         self.advanced_controls_widget.setStyleSheet("""
             QWidget#advancedControls {
                 background-color: #1a1a1a;
-                border-radius: 4px;
+                border-radius: 6px;
                 padding: 5px;
             }
         """)
@@ -521,13 +560,14 @@ class ChooseChannelScreen(QWidget):
 
         # Load External Subtitle Button
         self.load_subtitle_button = QPushButton("Load SRT")
-        self.load_subtitle_button.setToolTip("Load external subtitle file")
+        self.load_subtitle_button.setToolTip("Load external subtitle file (.srt, .sub, .ass)")
         self.load_subtitle_button.clicked.connect(self._load_external_subtitle)
         self.load_subtitle_button.setStyleSheet("""
             QPushButton {
                 background-color: #444;
                 padding: 6px 12px;
                 font-size: 12px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #555;
@@ -548,10 +588,38 @@ class ChooseChannelScreen(QWidget):
         favorites_history_layout = QHBoxLayout()
         favorites_history_layout.setSpacing(10)
         self.favorites_button = QPushButton("Favorites")
+        self.favorites_button.setToolTip("Show favorite channels")
         favorites_history_layout.addWidget(self.favorites_button)
         self.history_button = QPushButton("History")
+        self.history_button.setToolTip("Show recently watched channels")
         favorites_history_layout.addWidget(self.history_button)
         right_layout.addLayout(favorites_history_layout)
+
+        # ---------- Download/Recording Status Bar (summary, clickable) ----------
+        self.status_bar_widget = QPushButton("")
+        self.status_bar_widget.setFixedHeight(30)
+        self.status_bar_widget.setCursor(Qt.PointingHandCursor)
+        self.status_bar_widget.setStyleSheet("""
+            QPushButton {
+                background-color: #1a1a1a;
+                border-top: 1px solid #333;
+                border-radius: 0px;
+                color: #ccc;
+                font-size: 12px;
+                text-align: left;
+                padding-left: 12px;
+            }
+            QPushButton:hover {
+                background-color: #222;
+                color: #fff;
+            }
+        """)
+        self.status_bar_widget.setVisible(False)
+        right_layout.addWidget(self.status_bar_widget)
+
+        # ---------- Downloads & Recordings Panel ----------
+        self.downloads_panel = DownloadsPanel()
+        right_layout.addWidget(self.downloads_panel)
 
         main_splitter.addWidget(right_widget)
         main_splitter.setSizes([300, 900])  # Adjust panel sizes as desired
@@ -588,6 +656,90 @@ class ChooseChannelScreen(QWidget):
         self.controller.data_loaded.connect(self.on_data_loaded)
         self.controller.error_occurred.connect(self.show_error)
 
+    # ==================== Channel List Helpers ====================
+
+    def _get_favorite_names(self):
+        """Return a set of favorite channel names for the active profile."""
+        try:
+            return {ch.name for ch in self.controller.active_profile.favorites}
+        except Exception:
+            return set()
+
+    def _get_channel_badge(self, channel_name):
+        """Return a type badge string for the channel, e.g. ' [LIVE]'."""
+        try:
+            ch = self.controller.data_loader.get_channel_by_name(channel_name)
+            if ch and ch.channel_type:
+                ct = ch.channel_type.upper()
+                if ct in ("LIVE", "VOD", "SERIES"):
+                    return f"  [{ct}]"
+        except Exception:
+            pass
+        return ""
+
+    def _add_channel_items(self, channel_names):
+        """
+        Populate the channel list with decorated items.
+        Prepends a star for favorites and appends type badges.
+        Stores the real channel name in Qt.UserRole for lookups.
+        """
+        self.channel_list.clear()
+        fav_names = self._get_favorite_names()
+        for name in channel_names:
+            prefix = "\u2605 " if name in fav_names else ""
+            badge = self._get_channel_badge(name)
+            display_text = f"{prefix}{name}{badge}"
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.UserRole, name)
+            self.channel_list.addItem(item)
+
+    def _get_selected_channel_name(self):
+        """Get the real channel name from the currently selected list item."""
+        selected_item = self.channel_list.currentItem()
+        if selected_item:
+            real_name = selected_item.data(Qt.UserRole)
+            if real_name:
+                return real_name
+            # Fallback for items added without UserRole data
+            return selected_item.text()
+        return None
+
+    # ==================== Record/Download Button ====================
+
+    def _update_record_download_button(self):
+        """Update the record/download button text and state based on active channel."""
+        if not self.active_channel or not self.active_channel.stream_url:
+            self.record_download_button.setEnabled(False)
+            self.record_download_button.setText("Record")
+            return
+
+        self.record_download_button.setEnabled(True)
+        if self.download_manager.is_media_file(self.active_channel.stream_url):
+            self.record_download_button.setText("\u2B07 Download")
+            self.record_download_button.setToolTip("Download this media file")
+        else:
+            if self.active_channel.name in self.active_recordings:
+                self.record_download_button.setText("\u23F9 Stop Rec")
+                self.record_download_button.setToolTip("Stop recording this channel")
+            else:
+                self.record_download_button.setText("\u23FA Record")
+                self.record_download_button.setToolTip("Start recording this live stream")
+
+    def _on_record_download_clicked(self):
+        """Handle record/download button click based on channel type."""
+        if not self.active_channel:
+            return
+
+        if self.download_manager.is_media_file(self.active_channel.stream_url):
+            self.download_channel(self.active_channel)
+        else:
+            if self.active_channel.name in self.active_recordings:
+                self.stop_recording_channel(self.active_channel)
+            else:
+                self.start_recording_channel(self.active_channel)
+
+    # ==================== Loading ====================
+
     def load_playlist_with_progress(self):
         """Start loading the playlist with progress indicators"""
         try:
@@ -607,10 +759,10 @@ class ChooseChannelScreen(QWidget):
             self.thread.finished.connect(self.thread.deleteLater)
             self.thread.finished.connect(self.on_loading_finished)
             self.worker.error.connect(self.show_error)
-            
+
             # Connect data_loaded to transfer data from worker to controller (thread-safe)
             self.worker.data_loaded.connect(self._on_data_loaded_from_worker)
-            
+
             # Connect progress message to update loading overlay text
             self.worker.progress_message.connect(self.loading_overlay.update_text)
 
@@ -624,7 +776,7 @@ class ChooseChannelScreen(QWidget):
         """
         Transfer loaded data from worker's DataLoader to controller's DataLoader.
         This is called on the main thread via signal, ensuring thread safety.
-        
+
         Args:
             loaded_data_loader: The DataLoader instance from the worker with loaded data
         """
@@ -642,13 +794,6 @@ class ChooseChannelScreen(QWidget):
         # Hide loading overlay
         self.loading_overlay.hide()
         self.load_groups()
-
-        # # Select first group if any
-        # if self.group_list.count() > 0:
-        #     self.group_list.setCurrentRow(0)
-        #     selected_item = self.group_list.item(0)
-        #     if selected_item:
-        #         self.on_group_selected()
 
     def load_groups(self):
         """
@@ -671,10 +816,10 @@ class ChooseChannelScreen(QWidget):
 
         if self._advanced_controls_expanded:
             self.advanced_controls_widget.setVisible(True)
-            self.advanced_toggle_button.setText("▲ Advanced Controls")
+            self.advanced_toggle_button.setText("\u25B2 Advanced Controls")
         else:
             self.advanced_controls_widget.setVisible(False)
-            self.advanced_toggle_button.setText("▼ Advanced Controls")
+            self.advanced_toggle_button.setText("\u25BC Advanced Controls")
 
     def filter_groups(self, text: str):
         """
@@ -688,10 +833,9 @@ class ChooseChannelScreen(QWidget):
         """
         Filters the channel list based on the search text.
         """
-        if self.channel_list:
-            self.channel_list.clear()
-            filtered_channels = [channel for channel in self.all_channels if text.lower() in channel.lower()]
-            self.channel_list.addItems(filtered_channels)
+        if self.all_channels:
+            filtered = [ch for ch in self.all_channels if text.lower() in ch.lower()]
+            self._add_channel_items(filtered)
 
 
     def on_channel_selected(self):
@@ -699,14 +843,14 @@ class ChooseChannelScreen(QWidget):
         Handles the event when a channel is selected.
         Plays the selected channel's stream.
         """
-        selected_item = self.channel_list.currentItem()
-        if selected_item:
-            channel_name = selected_item.text()
+        channel_name = self._get_selected_channel_name()
+        if channel_name:
             channel = self.controller.find_channel_by_name(channel_name)
             if channel and channel.stream_url:
                 self.play_channel_stream(channel)
                 self.add_to_history(channel)
                 self.active_channel = channel
+                self._update_record_download_button()
             else:
                 QMessageBox.critical(self, "Stream Error", "Selected channel does not have a valid stream URL.")
 
@@ -738,7 +882,7 @@ class ChooseChannelScreen(QWidget):
             def __init__(self, url):
                 self.stream_url = url
                 self.name = "Stream"
-        
+
         self.play_channel_stream(SimpleChannel(stream_url))
 
     def play_channel(self):
@@ -795,7 +939,7 @@ class ChooseChannelScreen(QWidget):
             self.player.set_position(position / 1000.0)
 
     # ==================== Stream Error/Timeout Handlers ====================
-    
+
     def _on_stream_error(self, error_msg: str):
         """
         Handle stream errors from VLC.
@@ -812,7 +956,7 @@ class ChooseChannelScreen(QWidget):
             error_msg,
             QMessageBox.Ok
         )
-    
+
     def _on_connection_timeout(self, timeout_msg: str):
         """
         Handle connection timeout when stream fails to connect.
@@ -829,7 +973,7 @@ class ChooseChannelScreen(QWidget):
             timeout_msg + "\n\nPlease try another channel or check your network connection.",
             QMessageBox.Ok
         )
-    
+
     def _on_buffering(self, percentage: int):
         """
         Handle buffering status updates.
@@ -1016,8 +1160,9 @@ class ChooseChannelScreen(QWidget):
             QMessageBox.information(self, "Favorites", "No favorites added yet.")
             return
 
-        self.channel_list.clear()
-        self.channel_list.addItems(self.controller.active_profile.list_channels_in_favorites())
+        fav_names = self.controller.active_profile.list_channels_in_favorites()
+        self.all_channels = fav_names
+        self._add_channel_items(fav_names)
 
     def show_history(self):
         """
@@ -1027,8 +1172,9 @@ class ChooseChannelScreen(QWidget):
             QMessageBox.information(self, "History", "No channels watched yet.")
             return
 
-        self.channel_list.clear()
-        self.channel_list.addItems(self.controller.active_profile.list_channels_in_history())
+        hist_names = self.controller.active_profile.list_channels_in_history()
+        self.all_channels = hist_names
+        self._add_channel_items(hist_names)
 
     def open_context_menu(self, position):
         """
@@ -1037,11 +1183,10 @@ class ChooseChannelScreen(QWidget):
         Args:
             position (QPoint): Position where the menu is requested.
         """
-        selected_item = self.channel_list.currentItem()
-        if not selected_item:
+        channel_name = self._get_selected_channel_name()
+        if not channel_name:
             return
 
-        channel_name = selected_item.text()
         channel = self.controller.find_channel_by_name(channel_name)
 
         menu = QMenu()
@@ -1060,25 +1205,25 @@ class ChooseChannelScreen(QWidget):
         if channel and channel.stream_url:
             if self.download_manager.is_media_file(channel.stream_url):
                 # It's a downloadable media file
-                download_action = QAction("📥 Download", self)
+                download_action = QAction("Download", self)
                 download_action.triggered.connect(lambda: self.download_channel(channel))
                 menu.addAction(download_action)
             else:
                 # It's a livestream - can record
                 if channel_name in self.active_recordings:
                     # Currently recording
-                    stop_record_action = QAction("⏹️ Stop Recording", self)
+                    stop_record_action = QAction("Stop Recording", self)
                     stop_record_action.triggered.connect(lambda: self.stop_recording_channel(channel))
                     menu.addAction(stop_record_action)
                 else:
                     # Not recording
-                    record_action = QAction("🔴 Start Recording", self)
+                    record_action = QAction("Start Recording", self)
                     record_action.triggered.connect(lambda: self.start_recording_channel(channel))
                     menu.addAction(record_action)
 
             # Schedule recording option (for all streams)
             menu.addSeparator()
-            schedule_action = QAction("🗓️ Schedule Recording", self)
+            schedule_action = QAction("Schedule Recording", self)
             schedule_action.triggered.connect(lambda: self.schedule_recording(channel))
             menu.addAction(schedule_action)
 
@@ -1088,18 +1233,16 @@ class ChooseChannelScreen(QWidget):
         """
         Adds the selected channel to favorites.
         """
-        selected_item = self.channel_list.currentItem()
-        if selected_item:
-            channel_name = selected_item.text()
+        channel_name = self._get_selected_channel_name()
+        if channel_name:
             self.add_to_favorites(channel_name)
 
     def remove_selected_from_favorites(self):
         """
         Removes the selected channel from favorites.
         """
-        selected_item = self.channel_list.currentItem()
-        if selected_item:
-            channel_name = selected_item.text()
+        channel_name = self._get_selected_channel_name()
+        if channel_name:
             self.remove_from_favorites(channel_name)
 
     def add_to_favorites(self, channel_name: str):
@@ -1132,16 +1275,13 @@ class ChooseChannelScreen(QWidget):
         selected_item = self.group_list.currentItem()
         if selected_item:
             group_name = selected_item.text()
-            self.channel_list.clear()
             channels = self.controller.list_channels_in_group(group_name)
             self.all_channels = channels  # Keep a copy for filtering
-            self.channel_list.addItems(channels)
+            self._add_channel_items(channels)
 
     def populate_channel_list(self, channel_names: list):
         """Populate the channel list widget using a list of channel names."""
-        self.channel_list.clear()
-        for name in sorted(channel_names):
-            self.channel_list.addItem(name)
+        self._add_channel_items(sorted(channel_names))
 
     @pyqtSlot(str)
     def on_error_occurred(self, error_message: str):
@@ -1160,11 +1300,35 @@ class ChooseChannelScreen(QWidget):
 
     def setup_download_manager_signals(self):
         """Setup signals for download/record manager."""
+        # Original signals
         self.download_manager.download_progress.connect(self.on_download_progress)
         self.download_manager.download_complete.connect(self.on_download_complete)
         self.download_manager.download_error.connect(self.on_download_error)
         self.download_manager.recording_started.connect(self.on_recording_started)
         self.download_manager.recording_stopped.connect(self.on_recording_stopped)
+
+        # New signals -> panel
+        self.download_manager.download_speed.connect(self.downloads_panel.update_download_speed)
+        self.download_manager.recording_elapsed.connect(self.downloads_panel.update_recording_elapsed)
+        self.download_manager.recording_error.connect(self._on_recording_error)
+        self.download_manager.download_paused.connect(self.downloads_panel.mark_download_paused)
+        self.download_manager.download_resumed.connect(self.downloads_panel.mark_download_resumed)
+        self.download_manager.download_queued.connect(self._on_download_queued)
+
+        # Panel action signals -> manager
+        self.downloads_panel.pause_download_requested.connect(self.download_manager.pause_download)
+        self.downloads_panel.resume_download_requested.connect(self.download_manager.resume_download)
+        self.downloads_panel.cancel_download_requested.connect(self.download_manager.cancel_download)
+        self.downloads_panel.stop_recording_requested.connect(
+            lambda rid: self.download_manager.stop_recording(rid)
+        )
+        self.downloads_panel.open_folder_requested.connect(self._open_folder)
+        self.downloads_panel.retry_download_requested.connect(
+            lambda did, name, url: self.download_manager.start_download(did + "_retry", name, url)
+        )
+
+        # Status bar click toggles panel
+        self.status_bar_widget.clicked.connect(self.downloads_panel._toggle)
 
     def setup_scheduler_signals(self):
         """Setup signals for recording scheduler."""
@@ -1185,10 +1349,13 @@ class ChooseChannelScreen(QWidget):
         if reply == QMessageBox.Yes:
             success = self.download_manager.start_download(download_id, channel.name, channel.stream_url)
             if success:
-                QMessageBox.information(
-                    self, 'Download Started',
-                    f"Download started for '{channel.name}'\n\nCheck the downloads folder for progress."
-                )
+                self._active_download_id = download_id
+                # Add to panel (if not queued, it'll show as active)
+                # Queued items are handled by _on_download_queued signal
+                if self.download_manager.get_queue_position(download_id) == 0:
+                    self.downloads_panel.add_active_download(download_id, channel.name)
+                self._show_status_bar("downloading", f"Downloading: {channel.name}...", 0)
+                self._update_summary_bar()
             else:
                 QMessageBox.warning(
                     self, 'Download Failed',
@@ -1201,7 +1368,7 @@ class ChooseChannelScreen(QWidget):
 
         reply = QMessageBox.question(
             self, 'Record Channel',
-            f"Start recording '{channel.name}'?\n\nRecording will be saved to:\n{self.download_manager.downloads_dir}\n\nYou can stop recording from the context menu.",
+            f"Start recording '{channel.name}'?\n\nRecording will be saved to:\n{self.download_manager.downloads_dir}\n\nYou can stop recording from the context menu or the Record button.",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
 
@@ -1209,10 +1376,9 @@ class ChooseChannelScreen(QWidget):
             success = self.download_manager.start_recording(recording_id, channel.name, channel.stream_url)
             if success:
                 self.active_recordings[channel.name] = recording_id
-                QMessageBox.information(
-                    self, 'Recording Started',
-                    f"Recording started for '{channel.name}'\n\nRight-click the channel to stop recording."
-                )
+                self._update_record_download_button()
+                self._show_status_bar("recording", f"Recording: {channel.name}", -1)
+                self._update_summary_bar()
             else:
                 QMessageBox.warning(
                     self, 'Recording Failed',
@@ -1236,40 +1402,155 @@ class ChooseChannelScreen(QWidget):
             success = self.download_manager.stop_recording(recording_id)
             if success:
                 del self.active_recordings[channel.name]
+                self._update_record_download_button()
+
+    # ==================== Status Bar Helpers ====================
+
+    def _update_summary_bar(self):
+        """Update the summary status bar text from panel state."""
+        summary = self.downloads_panel.get_summary_text()
+        if summary:
+            self.status_bar_widget.setText(f"  {summary}  (click to expand)")
+            self.status_bar_widget.setVisible(True)
+        else:
+            self.status_bar_widget.setVisible(False)
+
+    def _show_status_bar(self, mode, text, progress_value):
+        """
+        Show the status bar with summary text.
+
+        Args:
+            mode: 'downloading', 'recording', or 'idle'
+            text: Status text to display
+            progress_value: Ignored (kept for backward compat signature)
+        """
+        self.status_bar_widget.setText(f"  {text}")
+        self.status_bar_widget.setVisible(True)
+
+    def _hide_status_bar(self):
+        """Hide the status bar if no active items remain."""
+        self._update_summary_bar()
+
+    def _open_folder(self, filepath: str):
+        """Open the folder containing the given file in the system file browser."""
+        folder = os.path.dirname(filepath)
+        if not os.path.isdir(folder):
+            logger.warning(f"Folder does not exist: {folder}")
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(folder)
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", folder])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", folder])
+        except Exception as e:
+            logger.error(f"Failed to open folder {folder}: {e}")
+
+    # ==================== Download/Record Signal Handlers ====================
 
     def on_download_progress(self, download_id: str, bytes_downloaded: int, total_bytes: int):
         """Handle download progress updates."""
+        self.downloads_panel.update_download_progress(download_id, bytes_downloaded, total_bytes)
         if total_bytes > 0:
-            percent = (bytes_downloaded / total_bytes) * 100
-            logger.debug(f"Download progress: {percent:.1f}% ({bytes_downloaded}/{total_bytes} bytes)")
+            mb_down = bytes_downloaded / (1024 * 1024)
+            mb_total = total_bytes / (1024 * 1024)
+            self._show_status_bar(
+                "downloading",
+                f"Downloading: {mb_down:.1f} / {mb_total:.1f} MB",
+                int((bytes_downloaded / total_bytes) * 100)
+            )
+        else:
+            mb_down = bytes_downloaded / (1024 * 1024)
+            self._show_status_bar("downloading", f"Downloading: {mb_down:.1f} MB", -1)
 
     def on_download_complete(self, download_id: str, filepath: str):
         """Handle download completion."""
         logger.info(f"Download complete: {filepath}")
-        QMessageBox.information(
-            self, 'Download Complete',
-            f"Download completed successfully!\n\nSaved to:\n{filepath}"
-        )
+        self._active_download_id = None
+
+        # Update panel
+        self.downloads_panel.remove_download(download_id)
+        self.downloads_panel.add_completed_item({
+            'item_id': download_id,
+            'channel_name': download_id,
+            'filepath': filepath,
+            'item_type': 'download',
+            'state': 'completed',
+            'completed_at': datetime.now(),
+        })
+        self._update_summary_bar()
 
     def on_download_error(self, download_id: str, error_message: str):
         """Handle download errors."""
         logger.error(f"Download error: {error_message}")
-        QMessageBox.critical(
-            self, 'Download Error',
-            f"Download failed:\n{error_message}"
-        )
+        self._active_download_id = None
+
+        # Update panel
+        self.downloads_panel.remove_download(download_id)
+        self.downloads_panel.remove_queued_download(download_id)
+        self.downloads_panel.add_completed_item({
+            'item_id': download_id,
+            'channel_name': download_id,
+            'filepath': '',
+            'item_type': 'download',
+            'state': 'failed',
+            'error_message': error_message,
+            'completed_at': datetime.now(),
+        })
+        self._update_summary_bar()
 
     def on_recording_started(self, recording_id: str):
         """Handle recording start."""
         logger.info(f"Recording started: {recording_id}")
+        # Find channel name from active_recordings mapping
+        channel_name = recording_id
+        for name, rid in self.active_recordings.items():
+            if rid == recording_id:
+                channel_name = name
+                break
+        self.downloads_panel.add_active_recording(recording_id, channel_name)
+        self._update_summary_bar()
 
     def on_recording_stopped(self, recording_id: str, filepath: str):
         """Handle recording stop."""
         logger.info(f"Recording stopped: {filepath}")
-        QMessageBox.information(
-            self, 'Recording Saved',
-            f"Recording saved successfully!\n\nSaved to:\n{filepath}"
-        )
+        # Remove from panel active, add to completed
+        self.downloads_panel.remove_recording(recording_id)
+
+        channel_name = recording_id
+        for name, rid in list(self.active_recordings.items()):
+            if rid == recording_id:
+                channel_name = name
+                break
+
+        self.downloads_panel.add_completed_item({
+            'item_id': recording_id,
+            'channel_name': channel_name,
+            'filepath': filepath,
+            'item_type': 'recording',
+            'state': 'completed',
+            'completed_at': datetime.now(),
+        })
+
+        # Clean up active recordings tracking
+        for name, rid in list(self.active_recordings.items()):
+            if rid == recording_id:
+                del self.active_recordings[name]
+                break
+        self._update_record_download_button()
+        self._update_summary_bar()
+
+    def _on_recording_error(self, recording_id: str, error_message: str):
+        """Handle recording error from VLC health monitoring."""
+        logger.error(f"Recording error: {recording_id} - {error_message}")
+
+    def _on_download_queued(self, download_id: str, channel_name: str, position: int):
+        """Handle download queued signal."""
+        self.downloads_panel.add_queued_download(download_id, channel_name, position)
+        self._update_summary_bar()
 
     # ==================== Scheduled Recording Methods ====================
 
@@ -1315,11 +1596,12 @@ class ChooseChannelScreen(QWidget):
     def on_scheduled_recording_started(self, schedule_id: str, channel_name: str):
         """Handle scheduled recording start."""
         logger.info(f"Scheduled recording started: {channel_name} ({schedule_id})")
-        # Could show a notification here
+        self._show_status_bar("recording", f"Scheduled recording: {channel_name}", -1)
 
     def on_scheduled_recording_completed(self, schedule_id: str, channel_name: str, output_path: str):
         """Handle scheduled recording completion."""
         logger.info(f"Scheduled recording completed: {channel_name} -> {output_path}")
+        self._hide_status_bar()
         QMessageBox.information(
             self,
             "Scheduled Recording Complete",
@@ -1330,6 +1612,7 @@ class ChooseChannelScreen(QWidget):
     def on_scheduled_recording_failed(self, schedule_id: str, channel_name: str, error_message: str):
         """Handle scheduled recording failure."""
         logger.error(f"Scheduled recording failed: {channel_name} - {error_message}")
+        self._hide_status_bar()
         QMessageBox.critical(
             self,
             "Scheduled Recording Failed",
@@ -1339,7 +1622,7 @@ class ChooseChannelScreen(QWidget):
     def attach_player_to_window(self):
         """
         Attach the VLC player to the video frame window.
-        
+
         Uses the SharedPlayerManager to handle platform-specific attachment.
         """
         if not hasattr(self, 'shared_player') or not self.shared_player:
@@ -1430,20 +1713,20 @@ class ChooseChannelScreen(QWidget):
                     self.shared_player.stop()
             except Exception as e:
                 logger.error(f"Error stopping shared player: {e}")
-        
+
         logger.info("Cleanup complete")
 
     def open_fullscreen_view(self, channel: Channel):
         """
         Open fullscreen view with state machine managed transition.
-        
+
         Uses the SharedPlayerManager's state machine to properly handle
         the transition:
         1. Create fullscreen view with video frame
         2. Let state machine handle player stop/reattach/restart
         """
         logger.info(f"=== Opening fullscreen for {channel.name} ===")
-        
+
         # Create fullscreen view (simplified - just provides video frame)
         self.fullscreen_view = FullScreenView(
             channel,
@@ -1454,11 +1737,11 @@ class ChooseChannelScreen(QWidget):
 
         # Show fullscreen first so the video_frame has a valid window ID
         self.fullscreen_view.showFullScreen()
-        
+
         # Use state machine to handle the transition
         # This will stop current playback, attach to new window, and restart
         QTimer.singleShot(150, lambda: self._complete_fullscreen_entry())
-        
+
         # Hide this window
         self.hide()
 
@@ -1473,19 +1756,19 @@ class ChooseChannelScreen(QWidget):
     def on_fullscreen_view_closed(self):
         """
         Handle returning from fullscreen view.
-        
+
         Uses state machine to transition back to embedded view.
         """
         logger.info("=== Returning from fullscreen ===")
-        
+
         # Show this window first (so video_frame has valid window ID)
         self.show()
-        
+
         # Close fullscreen view
         if self.fullscreen_view:
             self.fullscreen_view.close()
             self.fullscreen_view = None
-        
+
         # Use state machine to handle transition back
         # This will stop current playback, attach to embedded window, and restart
         QTimer.singleShot(150, lambda: self.shared_player.transition_to_embedded())
@@ -1496,7 +1779,7 @@ class ChooseChannelScreen(QWidget):
     def logout(self):
         """
         Handle logout with proper resource cleanup.
-        
+
         Ensures all downloads/recordings are stopped and player state
         is reset before transitioning back to login screen.
         """
@@ -1507,10 +1790,10 @@ class ChooseChannelScreen(QWidget):
         )
         if reply == QMessageBox.Yes:
             logger.info("User confirmed logout - performing cleanup")
-            
+
             # Perform full cleanup with logout flag
             self._perform_full_cleanup(for_logout=True)
-            
+
             # Small delay to ensure VLC has fully stopped before transitioning
             # This prevents crashes when the window is destroyed during transition
             QTimer.singleShot(100, lambda: self.logout_signal.emit("logging Out"))
