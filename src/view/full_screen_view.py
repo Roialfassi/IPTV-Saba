@@ -1,10 +1,27 @@
+"""
+FullScreenView - Fullscreen media player with floating overlay controls.
+
+The controls and retry indicator are separate top-level windows
+(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint) that float
+above VLC's native video surface.  This is necessary because VLC renders
+via a native child window (set_hwnd / set_xwindow / set_nsobject) that
+sits above all Qt child widgets in z-order.  Only independent top-level
+windows can reliably appear above the native video.
+
+Mouse detection uses QTimer-based cursor-position polling (100 ms) instead
+of Qt event filters, because VLC's native window captures mouse events
+before they reach Qt's event system.
+
+This approach mirrors what VLC's own Qt interface does for its fullscreen
+controller.
+"""
 import sys
 import logging
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QFrame, QSlider, QComboBox,
-                             QFileDialog)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QIcon
+                             QFileDialog, QProgressBar)
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
+from PyQt5.QtGui import QIcon, QCursor
 import vlc
 
 from src.model.channel_model import Channel
@@ -12,7 +29,8 @@ from src.utils.resource_path import resource_path
 
 # Import SharedPlayerManager for potential direct usage
 try:
-    from src.services.shared_player_manager import get_shared_player, SharedPlayerManager
+    from src.services.shared_player_manager import (
+        get_shared_player, SharedPlayerManager)
 except ImportError:
     get_shared_player = None
     SharedPlayerManager = None
@@ -21,96 +39,316 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Constants
-HIDE_CONTROLS_DELAY_MS = 2000  # Milliseconds to wait before hiding controls
-HIDE_CONTROLS_MOUSE_DELAY_MS = 5000  # Delay when mouse moves
-DEFAULT_VOLUME = 50  # Default volume level (0-100)
+HIDE_CONTROLS_DELAY_MS = 4000
+MOUSE_POLL_INTERVAL_MS = 100
+CONTROLS_HEIGHT = 120
+DEFAULT_VOLUME = 50
 WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
 
-# Shared combo box style
+# ---------------------------------------------------------------------------
+#  Styles
+# ---------------------------------------------------------------------------
 COMBO_STYLE = """
     QComboBox {
-        background-color: #2c2c2c;
-        color: white;
-        border: 1px solid #444;
-        border-radius: 6px;
-        padding: 4px 8px;
-        min-width: 100px;
-        font-family: 'Segoe UI', Arial, sans-serif;
+        background-color: #2a2a2a; color: #ddd;
+        border: 1px solid #555; border-radius: 4px;
+        padding: 3px 6px; min-width: 100px;
+        font-size: 11px; font-family: 'Segoe UI', Arial, sans-serif;
     }
-    QComboBox:hover {
-        border: 1px solid #E50914;
-    }
-    QComboBox::drop-down {
-        border: none;
-    }
+    QComboBox:hover { border: 1px solid #E50914; }
+    QComboBox::drop-down { border: none; }
     QComboBox QAbstractItemView {
-        background-color: #2c2c2c;
-        color: white;
+        background-color: #2a2a2a; color: #ddd;
         selection-background-color: #E50914;
     }
 """
 
-# Shared button style for row-1 buttons
 ROW1_BUTTON_STYLE = """
     QPushButton {
-        background-color: rgba(229, 9, 20, 0.8);
-        border: none;
-        color: white;
-        padding: 6px 14px;
-        text-align: center;
-        font-size: 13px;
-        font-weight: bold;
-        margin: 2px 1px;
-        border-radius: 6px;
+        background-color: rgba(229,9,20,0.85); border: none; color: white;
+        padding: 6px 14px; font-size: 13px; font-weight: bold;
+        margin: 2px 1px; border-radius: 6px;
         font-family: 'Segoe UI', Arial, sans-serif;
     }
-    QPushButton:hover {
-        background-color: rgba(229, 9, 20, 1);
-    }
+    QPushButton:hover { background-color: rgba(229,9,20,1); }
+    QPushButton:pressed { background-color: rgba(191,8,17,1); }
 """
 
-# Shared button style for row-2 secondary buttons
 ROW2_BUTTON_STYLE = """
     QPushButton {
-        background-color: rgba(44, 44, 44, 0.8);
-        border: 1px solid #444;
-        color: white;
-        padding: 5px 10px;
-        text-align: center;
-        font-size: 12px;
-        margin: 2px 1px;
-        border-radius: 6px;
+        background-color: rgba(44,44,44,0.8);
+        border: 1px solid #555; color: white;
+        padding: 5px 10px; font-size: 12px;
+        margin: 2px 1px; border-radius: 6px;
         font-family: 'Segoe UI', Arial, sans-serif;
     }
     QPushButton:hover {
-        background-color: rgba(229, 9, 20, 0.8);
+        background-color: rgba(229,9,20,0.8);
         border: 1px solid #E50914;
     }
 """
 
 
+# ===================================================================
+#  _OverlayWindow -- base for top-level overlay windows above VLC
+# ===================================================================
+
+class _OverlayWindow(QWidget):
+    """
+    Base class for top-level overlay windows that float above VLC video.
+
+    Uses Qt.Tool so the OS keeps it above its parent window, plus
+    FramelessWindowHint and WindowStaysOnTopHint to guarantee it
+    renders on top of VLC's native child window.
+    """
+
+    def __init__(self, parent_view: QWidget):
+        super().__init__(parent_view)
+        self.setWindowFlags(
+            Qt.Tool
+            | Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self._parent_view = parent_view
+
+
+# ===================================================================
+#  Controls overlay (bottom bar)
+# ===================================================================
+
+class _ControlsOverlay(_OverlayWindow):
+    """Floating controls bar at the bottom of the fullscreen view."""
+
+    def __init__(self, parent_view, channel_name: str):
+        super().__init__(parent_view)
+        self.setStyleSheet("""
+            QWidget#_ctrl_bg {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(0,0,0,0),
+                    stop:0.3 rgba(0,0,0,100),
+                    stop:1 rgba(0,0,0,220));
+            }
+            QLabel { background: transparent; color: #fff;
+                     font-family: 'Segoe UI', Arial, sans-serif; }
+        """)
+
+        bg = QWidget(self)
+        bg.setObjectName("_ctrl_bg")
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(bg)
+
+        layout = QVBoxLayout(bg)
+        layout.setContentsMargins(12, 20, 12, 10)
+        layout.setSpacing(6)
+
+        # -- Row 1: Back, Play/Pause, Volume, Channel name --
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
+
+        self.back_button = QPushButton("Back")
+        self.back_button.setToolTip("Return to channel browser (Escape)")
+        self.back_button.setCursor(Qt.PointingHandCursor)
+        self.back_button.setStyleSheet(ROW1_BUTTON_STYLE)
+        self.back_button.setFocusPolicy(Qt.NoFocus)
+        row1.addWidget(self.back_button)
+
+        self.play_pause_button = QPushButton("Pause")
+        self.play_pause_button.setToolTip("Play / Pause (Space)")
+        self.play_pause_button.setCursor(Qt.PointingHandCursor)
+        self.play_pause_button.setStyleSheet(ROW1_BUTTON_STYLE)
+        self.play_pause_button.setFocusPolicy(Qt.NoFocus)
+        row1.addWidget(self.play_pause_button)
+
+        vol_label = QLabel("Vol")
+        vol_label.setStyleSheet("font-size: 12px;")
+        row1.addWidget(vol_label)
+
+        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(DEFAULT_VOLUME)
+        self.volume_slider.setToolTip("Volume (0-100)")
+        self.volume_slider.setFixedWidth(120)
+        self.volume_slider.setFocusPolicy(Qt.NoFocus)
+        self.volume_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 4px; background: #444; border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #E50914; width: 12px; margin: -4px 0;
+                border-radius: 6px;
+            }
+        """)
+        row1.addWidget(self.volume_slider)
+
+        self.volume_percent_label = QLabel(f"{DEFAULT_VOLUME}%")
+        self.volume_percent_label.setFixedWidth(40)
+        self.volume_percent_label.setStyleSheet("font-size: 12px;")
+        row1.addWidget(self.volume_percent_label)
+
+        row1.addStretch()
+
+        self.channel_label = QLabel(channel_name)
+        self.channel_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.channel_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        row1.addWidget(self.channel_label)
+
+        layout.addLayout(row1)
+
+        # -- Row 2: Audio, Subs, SRT, Quality --
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+        lbl_s = "font-size: 12px; color: #aaa;"
+
+        a_lbl = QLabel("Audio:")
+        a_lbl.setStyleSheet(lbl_s)
+        row2.addWidget(a_lbl)
+        self.audio_combo = QComboBox()
+        self.audio_combo.setMinimumWidth(120)
+        self.audio_combo.setToolTip("Select audio track")
+        self.audio_combo.setStyleSheet(COMBO_STYLE)
+        self.audio_combo.setFocusPolicy(Qt.NoFocus)
+        row2.addWidget(self.audio_combo)
+
+        s_lbl = QLabel("Subs:")
+        s_lbl.setStyleSheet(lbl_s)
+        row2.addWidget(s_lbl)
+        self.subtitle_combo = QComboBox()
+        self.subtitle_combo.setMinimumWidth(120)
+        self.subtitle_combo.setToolTip("Select subtitle track")
+        self.subtitle_combo.setStyleSheet(COMBO_STYLE)
+        self.subtitle_combo.setFocusPolicy(Qt.NoFocus)
+        row2.addWidget(self.subtitle_combo)
+
+        self.load_subtitle_button = QPushButton("Load SRT")
+        self.load_subtitle_button.setToolTip(
+            "Load external subtitle file (.srt, .sub, .ass)")
+        self.load_subtitle_button.setCursor(Qt.PointingHandCursor)
+        self.load_subtitle_button.setStyleSheet(ROW2_BUTTON_STYLE)
+        self.load_subtitle_button.setFocusPolicy(Qt.NoFocus)
+        row2.addWidget(self.load_subtitle_button)
+
+        q_lbl = QLabel("Quality:")
+        q_lbl.setStyleSheet(lbl_s)
+        row2.addWidget(q_lbl)
+        self.quality_combo = QComboBox()
+        self.quality_combo.setMinimumWidth(100)
+        self.quality_combo.setToolTip("Select stream quality")
+        self.quality_combo.addItem("Auto", 0)
+        self.quality_combo.setStyleSheet(COMBO_STYLE)
+        self.quality_combo.setFocusPolicy(Qt.NoFocus)
+        row2.addWidget(self.quality_combo)
+
+        row2.addStretch()
+        layout.addLayout(row2)
+
+    # Convenience references used by FullScreenView
+    # (avoids self._controls_overlay.back_button.clicked.connect etc.)
+
+
+# ===================================================================
+#  Retry overlay (centered)
+# ===================================================================
+
+class _RetryOverlay(_OverlayWindow):
+    """Centered reconnection status overlay above VLC video."""
+
+    def __init__(self, parent_view: QWidget):
+        super().__init__(parent_view)
+        self.setStyleSheet("background: transparent;")
+
+        outer = QVBoxLayout(self)
+        outer.setAlignment(Qt.AlignCenter)
+
+        container = QWidget()
+        container.setFixedSize(300, 180)
+        container.setStyleSheet("""
+            QWidget {
+                background-color: rgba(20,20,20,0.92);
+                border-radius: 10px;
+                border: 2px solid #E50914;
+            }
+        """)
+        cl = QVBoxLayout(container)
+        cl.setContentsMargins(20, 20, 20, 20)
+        cl.setSpacing(15)
+
+        self.title_label = QLabel("Reconnecting...")
+        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setStyleSheet(
+            "font-size: 18px; font-weight: bold; color: #fff;"
+            "background: transparent; border: none;")
+        cl.addWidget(self.title_label)
+
+        self.attempt_label = QLabel("Attempt 1 of 3")
+        self.attempt_label.setAlignment(Qt.AlignCenter)
+        self.attempt_label.setStyleSheet(
+            "font-size: 14px; color: #aaa;"
+            "background: transparent; border: none;")
+        cl.addWidget(self.attempt_label)
+
+        progress = QProgressBar()
+        progress.setRange(0, 0)
+        progress.setTextVisible(False)
+        progress.setFixedHeight(6)
+        progress.setStyleSheet("""
+            QProgressBar {
+                background-color: #333; border: none; border-radius: 3px;
+            }
+            QProgressBar::chunk {
+                background-color: #E50914; border-radius: 3px;
+            }
+        """)
+        cl.addWidget(progress)
+
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setFixedWidth(100)
+        self.cancel_button.setCursor(Qt.PointingHandCursor)
+        self.cancel_button.setFocusPolicy(Qt.NoFocus)
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #444; color: white; border: none;
+                padding: 8px 16px; border-radius: 4px; font-weight: 600;
+            }
+            QPushButton:hover { background-color: #E50914; }
+            QPushButton:pressed { background-color: #BF0811; }
+        """)
+        cl.addWidget(self.cancel_button, alignment=Qt.AlignCenter)
+
+        outer.addWidget(container)
+
+
+# ===================================================================
+#  FullScreenView
+# ===================================================================
+
 class FullScreenView(QWidget):
     """
-    A full-screen media player that takes a URL, plays the channel, and provides limited controls.
-    Keys include: back to `ChooseChannelScreen`, volume control, and play/pause.
+    Full-screen media player.
 
-    NOTE: This view reuses the existing VLC player instance to avoid dual streams.
+    Overlay controls and retry indicator are separate top-level windows
+    that float above VLC's native video surface.  Mouse movement is
+    detected via cursor-position polling (not Qt event filters) to work
+    reliably even when VLC's native window captures input.
     """
 
-    go_back_signal = pyqtSignal()  # Signal to emit when going back to ChooseChannelScreen
+    go_back_signal = pyqtSignal()
 
-    def __init__(self, channel: Channel, existing_player=None, existing_instance=None):
+    def __init__(self, channel: Channel,
+                 existing_player=None, existing_instance=None):
         super().__init__()
         self.channel_name = channel.name
         self.stream_url = channel.stream_url
 
-        # Reuse existing player if provided to avoid dual streams
+        # VLC player setup
         if existing_player and existing_instance:
             self.vlc_instance = existing_instance
             self.player = existing_player
-            self.is_playing = True  # Already playing
-            self.using_shared_player = True  # Track that we're using shared player
-            logger.info("Reusing existing VLC player instance (seamless transition)")
+            self.is_playing = True
+            self.using_shared_player = True
+            logger.info("Reusing existing VLC player instance")
         else:
             self.vlc_instance = vlc.Instance()
             self.player = self.vlc_instance.media_player_new()
@@ -119,261 +357,378 @@ class FullScreenView(QWidget):
             logger.info("Created new VLC player instance")
 
         self.is_muted = False
-        self.init_ui()
-        self.setMouseTracking(True)
+        self._cursor_hidden = False
 
-        # Only start playing if we created a new player
+        # Build main window (video frame only)
+        self._init_ui()
+
+        # Build overlay windows (separate top-level windows)
+        self._controls_overlay = _ControlsOverlay(self, self.channel_name)
+        self._retry_overlay = _RetryOverlay(self)
+
+        # Wire overlay button/combo signals
+        self._wire_controls()
+
+        # Start playback or update UI
         if not (existing_player and existing_instance):
             self.play_channel()
         else:
-            # Just update the UI to reflect current state
             self.play_pause_button.setText("Pause")
 
-        # Connect to SharedPlayerManager signals for audio/subtitle tracks
+        # Connect SharedPlayerManager signals
         self._connect_track_signals()
+        self._connect_retry_signals()
 
-        self.hide_controls_timer = QTimer(self, interval=HIDE_CONTROLS_DELAY_MS)
-        self.hide_controls_timer.timeout.connect(self.hide_controls)
-        self.hide_controls_timer.start(HIDE_CONTROLS_DELAY_MS)
+        # --- Mouse polling timer (replaces event filter) ---
+        self._last_cursor_pos = QPoint(-1, -1)
+        self._mouse_poll_timer = QTimer(self)
+        self._mouse_poll_timer.setInterval(MOUSE_POLL_INTERVAL_MS)
+        self._mouse_poll_timer.timeout.connect(self._poll_mouse)
 
-    def init_ui(self):
+        # --- Auto-hide timer (single-shot) ---
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.setInterval(HIDE_CONTROLS_DELAY_MS)
+        self._hide_timer.timeout.connect(self._on_hide_timer)
+
+    # ================================================================
+    #  Convenience accessors (keep FullScreenView API flat)
+    # ================================================================
+
+    @property
+    def play_pause_button(self):
+        return self._controls_overlay.play_pause_button
+
+    @property
+    def volume_slider(self):
+        return self._controls_overlay.volume_slider
+
+    @property
+    def volume_percent_label(self):
+        return self._controls_overlay.volume_percent_label
+
+    @property
+    def audio_combo(self):
+        return self._controls_overlay.audio_combo
+
+    @property
+    def subtitle_combo(self):
+        return self._controls_overlay.subtitle_combo
+
+    @property
+    def quality_combo(self):
+        return self._controls_overlay.quality_combo
+
+    # ================================================================
+    #  UI Construction
+    # ================================================================
+
+    def _init_ui(self):
         self.setWindowTitle('Full Screen Channel View')
         self.setWindowIcon(QIcon(WINDOW_ICON_PATH))
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #141414;
-                color: #FFFFFF;
-                font-family: 'Segoe UI', Arial, sans-serif;
-            }
-        """)
+        self.setStyleSheet("background-color: #000;")
 
-        # Main layout
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # Video frame
         self.video_frame = QFrame()
         self.video_frame.setStyleSheet("background-color: black;")
-        main_layout.addWidget(self.video_frame, 1)
+        layout.addWidget(self.video_frame, 1)
 
-        # Controls container with gradient background
-        self.controls_widget = QWidget(self)
-        self.controls_widget.setStyleSheet("""
-            QWidget {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(0,0,0,0),
-                    stop:0.3 rgba(0,0,0,80),
-                    stop:1 rgba(0,0,0,220));
-            }
-            QLabel {
-                background: transparent;
-            }
-        """)
-        controls_outer_layout = QVBoxLayout(self.controls_widget)
-        controls_outer_layout.setContentsMargins(12, 20, 12, 10)
-        controls_outer_layout.setSpacing(6)
+    def _wire_controls(self):
+        """Connect overlay widget signals to FullScreenView methods."""
+        c = self._controls_overlay
+        c.back_button.clicked.connect(self.go_back)
+        c.play_pause_button.clicked.connect(self.toggle_play_pause)
+        c.volume_slider.valueChanged.connect(self.set_volume)
+        c.audio_combo.currentIndexChanged.connect(
+            self._on_audio_track_selected)
+        c.subtitle_combo.currentIndexChanged.connect(
+            self._on_subtitle_track_selected)
+        c.load_subtitle_button.clicked.connect(self._load_external_subtitle)
+        c.quality_combo.currentIndexChanged.connect(self._on_quality_selected)
 
-        # === Row 1: Back, Play/Pause, Volume, Channel name ===
-        row1_layout = QHBoxLayout()
-        row1_layout.setSpacing(8)
+        self._retry_overlay.cancel_button.clicked.connect(self._cancel_retry)
 
-        # Back Button
-        self.back_button = QPushButton("Back")
-        self.back_button.setToolTip("Return to channel browser (Escape)")
-        self.back_button.clicked.connect(self.go_back)
-        self.back_button.setStyleSheet(ROW1_BUTTON_STYLE)
-        row1_layout.addWidget(self.back_button)
+    # ================================================================
+    #  Overlay geometry sync
+    # ================================================================
 
-        # Play/Pause Button
-        self.play_pause_button = QPushButton("Pause")
-        self.play_pause_button.setToolTip("Play / Pause (Space)")
-        self.play_pause_button.clicked.connect(self.toggle_play_pause)
-        self.play_pause_button.setStyleSheet(ROW1_BUTTON_STYLE)
-        row1_layout.addWidget(self.play_pause_button)
+    def _sync_overlays(self):
+        """Position overlay windows relative to this fullscreen window."""
+        geo = self.geometry()
 
-        # Volume Slider
-        vol_label = QLabel("Vol")
-        vol_label.setStyleSheet("font-size: 12px; background: transparent;")
-        row1_layout.addWidget(vol_label)
+        # Controls bar at bottom
+        self._controls_overlay.setGeometry(
+            geo.x(),
+            geo.y() + geo.height() - CONTROLS_HEIGHT,
+            geo.width(),
+            CONTROLS_HEIGHT,
+        )
 
-        self.volume_slider = QSlider(Qt.Horizontal)
-        self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(DEFAULT_VOLUME)
-        self.volume_slider.setToolTip("Adjust playback volume (0-100)")
-        self.volume_slider.setFixedWidth(120)
-        self.volume_slider.valueChanged.connect(self.set_volume)
-        row1_layout.addWidget(self.volume_slider)
+        # Retry overlay fills entire area (content is centered by layout)
+        self._retry_overlay.setGeometry(geo)
 
-        # Volume percentage label
-        self.volume_percent_label = QLabel(f"{DEFAULT_VOLUME}%")
-        self.volume_percent_label.setFixedWidth(40)
-        self.volume_percent_label.setStyleSheet("font-size: 12px; background: transparent;")
-        row1_layout.addWidget(self.volume_percent_label)
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_overlays()
 
-        row1_layout.addStretch()
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        self._sync_overlays()
 
-        # Channel name label (inline in row 1)
-        self.channel_label = QLabel(self.channel_name)
-        self.channel_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.channel_label.setStyleSheet("font-size: 14px; font-weight: bold; background: transparent;")
-        row1_layout.addWidget(self.channel_label)
+    # ================================================================
+    #  Mouse detection via cursor polling
+    # ================================================================
 
-        controls_outer_layout.addLayout(row1_layout)
+    def _poll_mouse(self):
+        """Check if the cursor moved since last poll."""
+        pos = QCursor.pos()
+        if pos != self._last_cursor_pos:
+            self._last_cursor_pos = pos
+            # Only react if cursor is within our fullscreen area
+            if self.geometry().contains(pos):
+                self._on_mouse_activity()
 
-        # === Row 2: Audio, Subtitles, SRT, Quality ===
-        row2_layout = QHBoxLayout()
-        row2_layout.setSpacing(8)
+    def _on_mouse_activity(self):
+        """Cursor moved over our window -- show controls, reset timer."""
+        self.show_controls()
+        self._hide_timer.start()
 
-        # Audio Track Combo Box
-        audio_label = QLabel("Audio:")
-        audio_label.setStyleSheet("font-size: 12px; background: transparent;")
-        row2_layout.addWidget(audio_label)
-        self.audio_combo = QComboBox()
-        self.audio_combo.setMinimumWidth(120)
-        self.audio_combo.setToolTip("Select audio track")
-        self.audio_combo.setStyleSheet(COMBO_STYLE)
-        self.audio_combo.currentIndexChanged.connect(self._on_audio_track_selected)
-        row2_layout.addWidget(self.audio_combo)
+    def _on_hide_timer(self):
+        """Auto-hide timer expired."""
+        # Don't hide while retry overlay is showing
+        if self._retry_overlay.isVisible():
+            self._hide_timer.start()
+            return
 
-        # Subtitle Track Combo Box
-        sub_label = QLabel("Subtitles:")
-        sub_label.setStyleSheet("font-size: 12px; background: transparent;")
-        row2_layout.addWidget(sub_label)
-        self.subtitle_combo = QComboBox()
-        self.subtitle_combo.setMinimumWidth(120)
-        self.subtitle_combo.setToolTip("Select subtitle track")
-        self.subtitle_combo.setStyleSheet(COMBO_STYLE)
-        self.subtitle_combo.currentIndexChanged.connect(self._on_subtitle_track_selected)
-        row2_layout.addWidget(self.subtitle_combo)
+        # Don't hide if cursor is currently over the controls
+        pos = QCursor.pos()
+        ctrl_geo = self._controls_overlay.geometry()
+        if self._controls_overlay.isVisible() and ctrl_geo.contains(pos):
+            self._hide_timer.start()
+            return
 
-        # Load External Subtitle Button
-        self.load_subtitle_button = QPushButton("Load SRT")
-        self.load_subtitle_button.setToolTip("Load external subtitle file (.srt, .sub, .ass)")
-        self.load_subtitle_button.clicked.connect(self._load_external_subtitle)
-        self.load_subtitle_button.setStyleSheet(ROW2_BUTTON_STYLE)
-        row2_layout.addWidget(self.load_subtitle_button)
+        self.hide_controls()
 
-        # Quality Selection Combo Box
-        quality_label = QLabel("Quality:")
-        quality_label.setStyleSheet("font-size: 12px; background: transparent;")
-        row2_layout.addWidget(quality_label)
-        self.quality_combo = QComboBox()
-        self.quality_combo.setMinimumWidth(100)
-        self.quality_combo.setToolTip("Select stream quality")
-        self.quality_combo.addItem("Auto", 0)
-        self.quality_combo.setStyleSheet(COMBO_STYLE)
-        self.quality_combo.currentIndexChanged.connect(self._on_quality_selected)
-        row2_layout.addWidget(self.quality_combo)
+    # ================================================================
+    #  Show / Hide controls + cursor
+    # ================================================================
 
-        row2_layout.addStretch()
-        controls_outer_layout.addLayout(row2_layout)
+    def show_controls(self):
+        if not self._controls_overlay.isVisible():
+            self._sync_overlays()
+            self._controls_overlay.show()
+            self._controls_overlay.raise_()
+        if self._cursor_hidden:
+            QApplication.restoreOverrideCursor()
+            self._cursor_hidden = False
 
-        main_layout.addWidget(self.controls_widget)
+    def hide_controls(self):
+        self._controls_overlay.hide()
+        if not self._cursor_hidden:
+            QApplication.setOverrideCursor(QCursor(Qt.BlankCursor))
+            self._cursor_hidden = True
 
-        # Timer to update the UI
-        self.update_timer = QTimer(self)
-        self.update_timer.timeout.connect(self.update_ui)
-        self.update_timer.start(1000)
+    # ================================================================
+    #  Retry overlay
+    # ================================================================
+
+    def _connect_retry_signals(self):
+        if not (get_shared_player and self.using_shared_player):
+            return
+        sp = get_shared_player()
+        sp.retry_started.connect(self._on_retry_started)
+        sp.retry_exhausted.connect(self._on_retry_exhausted)
+        sp.playback_started.connect(self._on_playback_started)
+        logger.info("Connected to SharedPlayerManager retry signals")
+
+    def _on_retry_started(self, channel_name, attempt, max_attempts):
+        self._retry_overlay.attempt_label.setText(
+            f"Attempt {attempt} of {max_attempts}")
+        self._retry_overlay.title_label.setText("Reconnecting...")
+        self._sync_overlays()
+        self._retry_overlay.show()
+        self._retry_overlay.raise_()
+        self.show_controls()
+
+    def _on_retry_exhausted(self, channel_name):
+        self._retry_overlay.hide()
+
+    def _on_playback_started(self):
+        self._retry_overlay.hide()
+
+    def _cancel_retry(self):
+        if get_shared_player and self.using_shared_player:
+            get_shared_player().cancel_retry()
+        self._retry_overlay.hide()
+
+    # ================================================================
+    #  Player attachment
+    # ================================================================
 
     def attach_player_to_window(self):
-        """
-        Attach the VLC player to the video frame window using platform-specific methods.
-        This must be called AFTER the widget is shown to ensure valid window ID.
-        """
+        """Attach VLC player to the video frame (platform-specific)."""
         if not self.player:
             logger.warning("No player to attach")
             return
-
-        if not hasattr(self, 'video_frame'):
-            logger.warning("No video frame to attach to")
-            return
-
         try:
             win_id = int(self.video_frame.winId())
-            logger.info(f"FullScreenView: Attempting to attach player to window ID: {win_id}")
-
-            # Check if player was playing before attachment
-            was_playing = self.player.is_playing()
-            logger.info(f"FullScreenView: Player was_playing={was_playing}")
+            logger.info(f"FullScreenView: Attaching to window {win_id}")
 
             if sys.platform.startswith('linux'):
                 self.player.set_xwindow(win_id)
-                logger.info(f"Attached player to Linux X11 window: {win_id}")
             elif sys.platform == "win32":
                 self.player.set_hwnd(win_id)
-                logger.info(f"Attached player to Windows HWND: {win_id}")
             elif sys.platform == "darwin":
                 self.player.set_nsobject(win_id)
-                logger.info(f"Attached player to macOS NSObject: {win_id}")
             else:
                 logger.error(f"Unsupported platform: {sys.platform}")
                 return
 
-            # CRITICAL: Force video to refresh after window change
-            # Need to give the player time to recognize the new window
             QTimer.singleShot(150, self._refresh_video_after_attach)
-
         except Exception as e:
-            logger.error(f"Error attaching player to window: {e}")
+            logger.error(f"Error attaching player: {e}")
             import traceback
             traceback.print_exc()
 
     def _refresh_video_after_attach(self):
-        """Force the video to refresh after attaching to new window."""
+        """Force video to refresh after attaching to new window."""
         try:
             if not self.player:
                 return
-
-            logger.info(f"FullScreenView: Refreshing video. is_playing={self.player.is_playing()}")
-
             if self.player.is_playing():
-                # Save position
                 current_pos = self.player.get_position()
-                logger.info(f"FullScreenView: Current position before refresh: {current_pos}")
-
-                # The trick: pause briefly, then resume to force re-render to new window
                 self.player.pause()
 
-                def resume_playback():
+                def resume():
                     if self.player:
                         self.player.play()
-                        logger.info("FullScreenView: Resumed playback after refresh")
-                        # Restore position if needed
                         if current_pos and current_pos > 0.0:
-                            QTimer.singleShot(50, lambda: self.player.set_position(current_pos))
+                            QTimer.singleShot(
+                                50,
+                                lambda: self.player.set_position(current_pos))
 
-                QTimer.singleShot(100, resume_playback)
+                QTimer.singleShot(100, resume)
             else:
-                # Player wasn't playing, start it
-                logger.info("FullScreenView: Player not playing - starting playback")
                 self.player.play()
-
         except Exception as e:
             logger.error(f"Error refreshing video: {e}")
 
-    def showEvent(self, event):
-        """
-        Called when the widget is shown.
+    # ================================================================
+    #  Widget events
+    # ================================================================
 
-        If using shared player (state machine), don't attach here - the
-        SharedPlayerManager handles the transition. Only attach if we
-        created our own player.
-        """
+    def showEvent(self, event):
         super().showEvent(event)
 
+        # Start polling and auto-hide now that the window is visible
+        self._sync_overlays()
+        self._controls_overlay.show()
+        self._controls_overlay.raise_()
+        self._mouse_poll_timer.start()
+        self._hide_timer.start()
+
         if self.using_shared_player:
-            # SharedPlayerManager's state machine handles attachment
-            logger.info("FullScreenView showEvent - using shared player (state machine handles attachment)")
+            logger.info("FullScreenView shown - shared player handles attachment")
         else:
-            # We created our own player, need to attach it
-            logger.info("FullScreenView showEvent - own player, scheduling attachment")
+            logger.info("FullScreenView shown - scheduling own player attachment")
             QTimer.singleShot(200, self.attach_player_to_window)
 
+    def keyPressEvent(self, event):
+        self.show_controls()
+        self._hide_timer.start()
+
+        if event.key() == Qt.Key_Escape:
+            self.go_back()
+        elif event.key() == Qt.Key_Space:
+            self.toggle_play_pause()
+        elif event.key() == Qt.Key_Up:
+            vol = min(self.player.audio_get_volume() + 10, 100)
+            self.volume_slider.setValue(vol)
+            self.set_volume(vol)
+        elif event.key() == Qt.Key_Down:
+            vol = max(self.player.audio_get_volume() - 10, 0)
+            self.volume_slider.setValue(vol)
+            self.set_volume(vol)
+        event.accept()
+
+    def closeEvent(self, event):
+        """Clean up timers, overlays, cursor, and optionally VLC player."""
+        # Stop timers
+        self._mouse_poll_timer.stop()
+        self._hide_timer.stop()
+
+        # Hide and close overlay windows
+        self._controls_overlay.hide()
+        self._controls_overlay.close()
+        self._retry_overlay.hide()
+        self._retry_overlay.close()
+
+        # Restore cursor
+        if self._cursor_hidden:
+            QApplication.restoreOverrideCursor()
+            self._cursor_hidden = False
+
+        # Disconnect SharedPlayerManager signals
+        self._disconnect_signals()
+
+        # VLC cleanup (only if we own the player)
+        if not self.using_shared_player and self.player:
+            try:
+                if self.player.is_playing():
+                    self.player.set_pause(1)
+                try:
+                    self.player.set_media(None)
+                except Exception:
+                    pass
+                if sys.platform != "win32":
+                    try:
+                        self.player.stop()
+                    except Exception:
+                        pass
+                try:
+                    self.player.release()
+                except Exception as e:
+                    logger.warning(f"Error releasing player: {e}")
+                if self.vlc_instance:
+                    try:
+                        self.vlc_instance.release()
+                    except Exception as e:
+                        logger.warning(f"Error releasing VLC instance: {e}")
+                logger.info("Cleaned up local VLC player instance")
+            except Exception as e:
+                logger.error(f"Error during FullScreenView cleanup: {e}")
+        else:
+            logger.info("Using shared player - skipping VLC cleanup")
+
+        event.accept()
+
+    def _disconnect_signals(self):
+        """Safely disconnect all SharedPlayerManager signals."""
+        if not (get_shared_player and self.using_shared_player):
+            return
+        sp = get_shared_player()
+        pairs = [
+            (sp.audio_tracks_available, self._on_audio_tracks_available),
+            (sp.subtitles_available, self._on_subtitles_available),
+            (sp.quality_variants_available, self._on_quality_variants_available),
+            (sp.retry_started, self._on_retry_started),
+            (sp.retry_exhausted, self._on_retry_exhausted),
+            (sp.playback_started, self._on_playback_started),
+        ]
+        for sig, slot in pairs:
+            try:
+                sig.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
+
+    # ================================================================
+    #  Playback controls
+    # ================================================================
+
     def play_channel(self):
-        """
-        Play the channel stream provided in the URL.
-        """
         media = self.vlc_instance.media_new(self.stream_url)
         self.player.set_media(media)
         self.player.play()
@@ -381,9 +736,6 @@ class FullScreenView(QWidget):
         self.play_pause_button.setText("Pause")
 
     def toggle_play_pause(self):
-        """
-        Toggle between play and pause.
-        """
         if self.is_playing:
             self.player.pause()
             self.is_playing = False
@@ -394,254 +746,124 @@ class FullScreenView(QWidget):
             self.play_pause_button.setText("Pause")
 
     def set_volume(self, volume):
-        """
-        Set the volume of the player.
-        """
         self.player.audio_set_volume(volume)
         self.volume_percent_label.setText(f"{volume}%")
 
     def go_back(self):
-        """
-        Emit a signal to go back to the ChooseChannelScreen.
-        NOTE: We don't stop the player here anymore since it's shared with ChooseChannelScreen.
-        """
-        # Don't stop the player - let ChooseChannelScreen handle it
         self.go_back_signal.emit()
 
-    def keyPressEvent(self, event):
-        """
-        Handle key events for basic control: back, mute/unmute, and volume control.
-        """
-        # Show controls and reset hide timer on any keypress
-        self.show_controls()
-        self.hide_controls_timer.start(HIDE_CONTROLS_MOUSE_DELAY_MS)
-
-        if event.key() == Qt.Key_Escape:
-            self.go_back()
-        elif event.key() == Qt.Key_Space:
-            self.toggle_play_pause()
-        elif event.key() == Qt.Key_Up:
-            # Increase volume by 10
-            current_volume = self.player.audio_get_volume()
-            self.set_volume(min(current_volume + 10, 100))
-            self.volume_slider.setValue(min(current_volume + 10, 100))
-        elif event.key() == Qt.Key_Down:
-            # Decrease volume by 10
-            current_volume = self.player.audio_get_volume()
-            self.set_volume(max(current_volume - 10, 0))
-            self.volume_slider.setValue(max(current_volume - 10, 0))
-        event.accept()
-
-    def update_ui(self):
-        """
-        Update the UI periodically (optional, can be extended for more features).
-        """
-        pass
-
-    def closeEvent(self, event):
-        """
-        Handle window close event.
-
-        If using shared player, don't stop or release - the ChooseChannelScreen
-        will continue using it. Only cleanup if we created our own player.
-
-        IMPORTANT: On Windows, calling player.stop() can cause access violations.
-        We use a safer cleanup approach: pause, set media to None, then release.
-        """
-        if not self.using_shared_player and self.player:
-            # We created our own player, so we should clean it up
-            try:
-                # Pause first instead of stop (safer on Windows)
-                if self.player.is_playing():
-                    self.player.set_pause(1)
-
-                # Set media to None to help release internal resources
-                try:
-                    self.player.set_media(None)
-                except Exception:
-                    pass
-
-                # On Windows, skip stop() as it can crash
-                if sys.platform != "win32":
-                    try:
-                        self.player.stop()
-                    except Exception:
-                        pass
-
-                try:
-                    self.player.release()
-                except Exception as e:
-                    logger.warning(f"Error releasing player: {e}")
-
-                if self.vlc_instance:
-                    try:
-                        self.vlc_instance.release()
-                    except Exception as e:
-                        logger.warning(f"Error releasing VLC instance: {e}")
-
-                logger.info("Cleaned up local VLC player instance")
-            except Exception as e:
-                logger.error(f"Error during FullScreenView cleanup: {e}")
-        else:
-            logger.info("Using shared player - skipping cleanup (player continues in channel browser)")
-
-        event.accept()
-
-    def mouseMoveEvent(self, event):
-        self.show_controls()
-        self.hide_controls_timer.start(HIDE_CONTROLS_MOUSE_DELAY_MS)
-
-    def show_controls(self):
-        self.controls_widget.show()
-        self.setCursor(Qt.ArrowCursor)
-
-    def hide_controls(self):
-        self.controls_widget.hide()
-
-    # ==================== Audio/Subtitle Track Methods ====================
+    # ================================================================
+    #  Audio / Subtitle / Quality
+    # ================================================================
 
     def _connect_track_signals(self):
-        """Connect to SharedPlayerManager signals for audio/subtitle/quality track updates."""
         if get_shared_player and self.using_shared_player:
-            shared_player = get_shared_player()
-            shared_player.audio_tracks_available.connect(self._on_audio_tracks_available)
-            shared_player.subtitles_available.connect(self._on_subtitles_available)
-            shared_player.quality_variants_available.connect(self._on_quality_variants_available)
+            sp = get_shared_player()
+            sp.audio_tracks_available.connect(self._on_audio_tracks_available)
+            sp.subtitles_available.connect(self._on_subtitles_available)
+            sp.quality_variants_available.connect(
+                self._on_quality_variants_available)
             logger.info("Connected to SharedPlayerManager track signals")
-
-            # Populate existing quality variants if any
-            variants = shared_player.get_quality_variants()
+            variants = sp.get_quality_variants()
             if variants:
                 self._on_quality_variants_available(variants)
 
     def _on_audio_tracks_available(self, tracks):
-        """
-        Handle audio tracks becoming available.
-
-        Args:
-            tracks: List of (track_id, track_name) tuples
-        """
         logger.info(f"Audio tracks available: {len(tracks)}")
         self.audio_combo.blockSignals(True)
         self.audio_combo.clear()
-        for track_id, track_name in tracks:
-            self.audio_combo.addItem(track_name, track_id)
+        for tid, tname in tracks:
+            self.audio_combo.addItem(tname, tid)
         self.audio_combo.blockSignals(False)
-
-        # Select current track
         if get_shared_player:
-            current = get_shared_player().get_current_audio_track()
+            cur = get_shared_player().get_current_audio_track()
             for i in range(self.audio_combo.count()):
-                if self.audio_combo.itemData(i) == current:
+                if self.audio_combo.itemData(i) == cur:
                     self.audio_combo.setCurrentIndex(i)
                     break
 
     def _on_subtitles_available(self, tracks):
-        """
-        Handle subtitle tracks becoming available.
-
-        Args:
-            tracks: List of (track_id, track_name) tuples
-        """
         logger.info(f"Subtitle tracks available: {len(tracks)}")
         self.subtitle_combo.blockSignals(True)
         self.subtitle_combo.clear()
-        for track_id, track_name in tracks:
-            self.subtitle_combo.addItem(track_name, track_id)
+        for tid, tname in tracks:
+            self.subtitle_combo.addItem(tname, tid)
         self.subtitle_combo.blockSignals(False)
-
-        # Select current track
         if get_shared_player:
-            current = get_shared_player().get_current_subtitle_track()
+            cur = get_shared_player().get_current_subtitle_track()
             for i in range(self.subtitle_combo.count()):
-                if self.subtitle_combo.itemData(i) == current:
+                if self.subtitle_combo.itemData(i) == cur:
                     self.subtitle_combo.setCurrentIndex(i)
                     break
 
     def _on_audio_track_selected(self, index):
-        """Handle audio track selection from combo box."""
         if index < 0:
             return
-        track_id = self.audio_combo.itemData(index)
-        if track_id is not None:
+        tid = self.audio_combo.itemData(index)
+        if tid is not None:
             if get_shared_player and self.using_shared_player:
-                get_shared_player().set_audio_track(track_id)
+                get_shared_player().set_audio_track(tid)
             elif self.player:
-                self.player.audio_set_track(track_id)
-            logger.info(f"Selected audio track: {track_id}")
+                self.player.audio_set_track(tid)
+            logger.info(f"Selected audio track: {tid}")
 
     def _on_subtitle_track_selected(self, index):
-        """Handle subtitle track selection from combo box."""
         if index < 0:
             return
-        track_id = self.subtitle_combo.itemData(index)
-        if track_id is not None:
+        tid = self.subtitle_combo.itemData(index)
+        if tid is not None:
             if get_shared_player and self.using_shared_player:
-                get_shared_player().set_subtitle_track(track_id)
+                get_shared_player().set_subtitle_track(tid)
             elif self.player:
-                self.player.video_set_spu(track_id)
-            logger.info(f"Selected subtitle track: {track_id}")
+                self.player.video_set_spu(tid)
+            logger.info(f"Selected subtitle track: {tid}")
 
     def _load_external_subtitle(self):
-        """Load an external subtitle file."""
         file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Load Subtitle File",
-            "",
-            "Subtitle Files (*.srt *.sub *.ass *.ssa *.vtt);;All Files (*)"
-        )
+            self, "Load Subtitle File", "",
+            "Subtitle Files (*.srt *.sub *.ass *.ssa *.vtt);;All Files (*)")
         if file_path:
             if get_shared_player and self.using_shared_player:
-                success = get_shared_player().load_external_subtitle(file_path)
+                ok = get_shared_player().load_external_subtitle(file_path)
             elif self.player:
-                success = self.player.video_set_subtitle_file(file_path)
+                ok = self.player.video_set_subtitle_file(file_path)
             else:
-                success = False
-
-            if success:
+                ok = False
+            if ok:
                 logger.info(f"Loaded external subtitle: {file_path}")
             else:
                 logger.error(f"Failed to load subtitle: {file_path}")
 
-    # ==================== Quality Selection Methods ====================
-
     def _on_quality_variants_available(self, variants):
-        """
-        Handle quality variants becoming available.
-
-        Args:
-            variants: List of QualityVariant objects
-        """
         logger.info(f"Quality variants available: {len(variants)}")
         self.quality_combo.blockSignals(True)
         self.quality_combo.clear()
         self.quality_combo.addItem("Auto", 0)
-        for i, variant in enumerate(variants, start=1):
-            self.quality_combo.addItem(variant.display_name, i)
+        for i, v in enumerate(variants, start=1):
+            self.quality_combo.addItem(v.display_name, i)
         self.quality_combo.blockSignals(False)
 
     def _on_quality_selected(self, index):
-        """Handle quality selection from combo box."""
         if index < 0:
             return
-        variant_index = self.quality_combo.itemData(index)
-        if variant_index is not None and get_shared_player and self.using_shared_player:
-            get_shared_player().set_quality(variant_index)
-            logger.info(f"Selected quality: index {variant_index}")
+        vi = self.quality_combo.itemData(index)
+        if vi is not None and get_shared_player and self.using_shared_player:
+            get_shared_player().set_quality(vi)
+            logger.info(f"Selected quality: index {vi}")
 
 
-# Testing the FullScreenView class
+# ===================================================================
+#  Standalone test
+# ===================================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    # Sample channel details
-    channel_name = "Sample Channel"
-    stream_url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-    channel_mock = Channel.from_dict({"name" : channel_name, "stream_url": stream_url})
-    full_screen_view = FullScreenView(channel_mock)
-
-    # Connect go_back_signal to a function (for now just closing the app)
-    full_screen_view.go_back_signal.connect(app.quit)
-
-    full_screen_view.showFullScreen()
+    channel_mock = Channel.from_dict({
+        "name": "Sample Channel",
+        "stream_url": "http://commondatastorage.googleapis.com/"
+                      "gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    })
+    view = FullScreenView(channel_mock)
+    view.go_back_signal.connect(app.quit)
+    view.showFullScreen()
     sys.exit(app.exec_())

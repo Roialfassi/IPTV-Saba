@@ -242,9 +242,9 @@ class RecordingItemWidget(QWidget):
         layout.setSpacing(8)
 
         # Recording indicator
-        self.indicator = QLabel("\u23FA")
-        self.indicator.setStyleSheet("color: #E50914; font-size: 16px; background: transparent;")
-        self.indicator.setFixedWidth(20)
+        self.indicator = QLabel("REC")
+        self.indicator.setStyleSheet("color: #E50914; font-size: 10px; font-weight: 700; background: transparent;")
+        self.indicator.setFixedWidth(28)
         layout.addWidget(self.indicator)
 
         # Name
@@ -317,21 +317,21 @@ class CompletedItemWidget(QWidget):
         # State icon
         state = item_data.get('state', 'completed')
         if state == 'completed':
-            icon_text = "\u2714"
+            icon_text = "OK"
             icon_color = "#4CAF50"
         elif state == 'failed':
-            icon_text = "\u2716"
+            icon_text = "ERR"
             icon_color = "#E50914"
         elif state == 'cancelled':
-            icon_text = "\u2013"
+            icon_text = "--"
             icon_color = "#888"
         else:
-            icon_text = "\u2022"
+            icon_text = "--"
             icon_color = "#888"
 
         icon_label = QLabel(icon_text)
-        icon_label.setStyleSheet(f"color: {icon_color}; font-size: 14px; background: transparent;")
-        icon_label.setFixedWidth(16)
+        icon_label.setStyleSheet(f"color: {icon_color}; font-size: 10px; font-weight: 700; background: transparent;")
+        icon_label.setFixedWidth(24)
         layout.addWidget(icon_label)
 
         # Name + info
@@ -471,7 +471,7 @@ class DownloadsPanel(QWidget):
         layout.setSpacing(0)
 
         # Toggle button
-        self.toggle_button = QPushButton("\u25BC Downloads & Recordings")
+        self.toggle_button = QPushButton("v  Downloads & Recordings")
         self.toggle_button.setStyleSheet("""
             QPushButton {
                 background-color: #1a1a1a;
@@ -570,13 +570,13 @@ class DownloadsPanel(QWidget):
         if q_count:
             parts.append(f"{q_count} queued")
 
-        arrow = "\u25B2" if self._expanded else "\u25BC"
+        arrow = "^" if self._expanded else "v"
 
         if parts:
             summary = " | ".join(parts)
-            self.toggle_button.setText(f"{arrow} Downloads & Recordings  ({summary})")
+            self.toggle_button.setText(f"{arrow}  Downloads & Recordings  ({summary})")
         else:
-            self.toggle_button.setText(f"{arrow} Downloads & Recordings")
+            self.toggle_button.setText(f"{arrow}  Downloads & Recordings")
 
     def _ensure_visible(self):
         """Auto-expand the panel content when items are added."""
