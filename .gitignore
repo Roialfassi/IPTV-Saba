@@ -21,3 +21,5 @@ src/iptv_app.exe
 src/iptv_app.exe
 /backend
 /frontend
+.claude/settings.local.json
+CLAUDE.md
