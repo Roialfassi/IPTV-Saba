@@ -1,5 +1,6 @@
 import json
 import sys
+import hashlib
 from enum import Enum
 from src.model.group_model import Group
 from src.model.channel_model import Channel
@@ -72,6 +73,15 @@ class DataLoader:
     MAX_RETRY_DELAY = 30.0  # seconds
     BACKOFF_MULTIPLIER = 2.0
 
+    # Special aggregate group names
+    SPECIAL_GROUP_ALL = "All Channels"
+    SPECIAL_GROUP_LIVE = "All Livestreams"
+    SPECIAL_GROUP_VOD = "All VODs"
+    SPECIAL_GROUP_NAMES = frozenset([SPECIAL_GROUP_ALL, SPECIAL_GROUP_LIVE, SPECIAL_GROUP_VOD])
+
+    # Cache configuration
+    CACHE_METADATA_FILE = "cache_metadata.json"
+
     # ==================== Exception Classes ====================
     
     class ParseError(Exception):
@@ -112,12 +122,13 @@ class DataLoader:
 
     # ==================== Initialization ====================
     
-    def __init__(self, default_group_name: str = "Ungrouped"):
+    def __init__(self, default_group_name: str = "Ungrouped", cache_dir: str = None):
         """
         Initialize the M3U parser.
 
         Args:
             default_group_name: Name for channels without a specified group
+            cache_dir: Optional directory for HTTP 304 caching (ETag/Last-Modified)
         """
         self._groups: Dict[str, Group] = {}
         self._channels: List[Channel] = []
@@ -129,6 +140,11 @@ class DataLoader:
         
         # Progress tracking
         self._progress_callback: Optional[Callable[[int, int, str], None]] = None
+        
+        # HTTP 304 cache directory
+        self._cache_dir: Optional[str] = cache_dir
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
 
     # ==================== Properties ====================
     
@@ -230,7 +246,9 @@ class DataLoader:
         self, 
         url: str, 
         stream: bool = False, 
-        timeout: int = 30
+        timeout: int = 30,
+        extra_headers: Dict[str, str] = None,
+        allow_304: bool = False
     ) -> requests.Response:
         """
         Make an HTTP GET request with exponential backoff retry logic.
@@ -239,6 +257,8 @@ class DataLoader:
             url: URL to request
             stream: Whether to stream the response
             timeout: Request timeout in seconds
+            extra_headers: Additional headers (e.g. If-None-Match, If-Modified-Since)
+            allow_304: If True, return 304 responses instead of raising
             
         Returns:
             requests.Response object
@@ -249,14 +269,25 @@ class DataLoader:
         last_exception = None
         delay = self.INITIAL_RETRY_DELAY
         
+        # Merge default headers with any extra conditional headers
+        headers = dict(self.DEFAULT_HEADERS)
+        if extra_headers:
+            headers.update(extra_headers)
+        
         for attempt in range(self.MAX_RETRIES):
             try:
                 response = requests.get(
                     url, 
-                    headers=self.DEFAULT_HEADERS,
+                    headers=headers,
                     stream=stream, 
                     timeout=timeout
                 )
+                
+                # Allow 304 Not Modified to pass through without raising
+                if allow_304 and response.status_code == 304:
+                    logger.info(f"Server returned 304 Not Modified for {url}")
+                    return response
+                
                 response.raise_for_status()
                 return response
                 
@@ -318,6 +349,70 @@ class DataLoader:
             except Exception as e:
                 logger.warning(f"Progress callback error: {e}")
 
+    # ==================== HTTP 304 Cache Methods ====================
+    
+    def _get_url_hash(self, url: str) -> str:
+        """Generate a stable hash key from a URL for cache file naming."""
+        return hashlib.md5(url.encode('utf-8')).hexdigest()
+
+    def _get_cache_file_path(self, url: str) -> str:
+        """Get the JSON cache file path for a given URL."""
+        return os.path.join(self._cache_dir, f"{self._get_url_hash(url)}.json")
+
+    def _get_cache_metadata_path(self) -> str:
+        """Get the path to the cache metadata JSON file."""
+        return os.path.join(self._cache_dir, self.CACHE_METADATA_FILE)
+
+    def _load_cache_metadata(self) -> Dict:
+        """Load the cache metadata file (ETag / Last-Modified per URL)."""
+        path = self._get_cache_metadata_path()
+        if os.path.isfile(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Failed to read cache metadata: {e}")
+        return {}
+
+    def _get_conditional_headers(self, url: str) -> Dict[str, str]:
+        """
+        Build If-None-Match / If-Modified-Since headers from cached metadata.
+        Returns an empty dict if no cached headers exist for this URL.
+        """
+        metadata = self._load_cache_metadata()
+        entry = metadata.get(self._get_url_hash(url), {})
+        headers = {}
+        if entry.get('etag'):
+            headers['If-None-Match'] = entry['etag']
+        if entry.get('last_modified'):
+            headers['If-Modified-Since'] = entry['last_modified']
+        return headers
+
+    def _save_to_cache(self, url: str, response: requests.Response) -> None:
+        """
+        Save the parsed data as JSON and store ETag/Last-Modified from the response.
+        Called after a successful 200 download so future requests can use 304.
+        """
+        try:
+            # Save parsed channel data as JSON
+            cache_path = self._get_cache_file_path(url)
+            self.save_to_json(cache_path)
+
+            # Save response headers for conditional requests
+            metadata = self._load_cache_metadata()
+            metadata[self._get_url_hash(url)] = {
+                'url': url,
+                'etag': response.headers.get('ETag', ''),
+                'last_modified': response.headers.get('Last-Modified', ''),
+                'cached_at': time.time()
+            }
+            with open(self._get_cache_metadata_path(), 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=2)
+
+            logger.info(f"Saved cache for URL (ETag={response.headers.get('ETag', 'none')})")
+        except Exception as e:
+            logger.warning(f"Failed to save cache: {e}")
+
     # ==================== Main Loading Methods ====================
     
     def load(
@@ -347,15 +442,20 @@ class DataLoader:
             parsed_url = urlparse(source)
             if use_optimized and parsed_url.scheme in ('http', 'https'):
                 logger.info("Using optimized streaming parser for faster loading")
-                return self._load_and_parse_streaming(source)
-
-            # Fall back to traditional method for files and direct content
-            self._report_progress(0, 0, "Fetching content...")
-            content = self._get_content(source)
-            if not content:
-                return False
-
-            return self._parse(content)
+                result = self._load_and_parse_streaming(source)
+            else:
+                # Fall back to traditional method for files and direct content
+                self._report_progress(0, 0, "Fetching content...")
+                content = self._get_content(source)
+                if not content:
+                    return False
+                result = self._parse(content)
+            
+            # Create special aggregate groups after any successful load
+            if result:
+                self._create_special_groups()
+            
+            return result
             
         except self.ParseError as e:
             logger.error(f"Parse error: {e}")
@@ -603,6 +703,34 @@ class DataLoader:
             self._channels = []
             self._channel_index = {}
 
+            # Build conditional headers for HTTP 304 support
+            conditional_headers = self._get_conditional_headers(url) if self._cache_dir else {}
+
+            # Make streaming request with retry (supports 304 Not Modified)
+            self._report_progress(0, 0, "Connecting to server...")
+            logger.info(f"Starting optimized streaming download from {url}")
+            response = self._request_with_retry(
+                url, stream=True, 
+                extra_headers=conditional_headers,
+                allow_304=bool(conditional_headers)
+            )
+
+            # Handle 304 Not Modified — load from cache
+            if response.status_code == 304:
+                logger.info("✓ Server returned 304 Not Modified — loading from cache")
+                self._report_progress(0, 0, "Content unchanged, loading from cache...")
+                cache_path = self._get_cache_file_path(url)
+                if os.path.isfile(cache_path):
+                    if self.load_from_json(cache_path):
+                        self._report_progress(
+                            100, 100,
+                            f"Loaded from cache: {len(self._channels)} channels in {len(self._groups)} groups"
+                        )
+                        return True
+                # Cache file missing/corrupt — fall through to full re-download
+                logger.warning("Cache file not found despite 304, re-downloading...")
+                response = self._request_with_retry(url, stream=True)
+
             # Shared data structures with thread safety
             groups_lock = threading.Lock()
             channels_lock = threading.Lock()
@@ -611,11 +739,6 @@ class DataLoader:
             # Statistics
             start_time = time.time()
             bytes_downloaded = 0
-
-            # Make streaming request with retry
-            self._report_progress(0, 0, "Connecting to server...")
-            logger.info(f"Starting optimized streaming download from {url}")
-            response = self._request_with_retry(url, stream=True)
 
             # Try to get content length for progress reporting
             content_length = int(response.headers.get('content-length', 0))
@@ -789,6 +912,10 @@ class DataLoader:
                 f"Complete: {len(self._channels)} channels in {len(self._groups)} groups"
             )
 
+            # Save to cache for future 304 support
+            if self._cache_dir and len(self._channels) > 0:
+                self._save_to_cache(url, response)
+
             return len(self._channels) > 0
 
         except self.NetworkError:
@@ -803,6 +930,51 @@ class DataLoader:
         except Exception as e:
             logger.error(f"Error in streaming parser: {type(e).__name__}: {e}")
             raise self.ParseError(f"Streaming parsing error: {type(e).__name__}: {e}")
+
+    # ==================== Special Aggregate Groups ====================
+    
+    def _create_special_groups(self):
+        """
+        Create special aggregate groups after parsing:
+        - All Channels: every loaded channel
+        - All Livestreams: channels detected as LIVE
+        - All VODs: channels detected as VOD
+        
+        These are always regenerated (not saved to cache) so they stay in sync.
+        """
+        if not self._channels:
+            return
+        
+        # Remove any stale special groups first (in case of reload)
+        for name in [self.SPECIAL_GROUP_ALL, self.SPECIAL_GROUP_LIVE, self.SPECIAL_GROUP_VOD]:
+            self._groups.pop(name, None)
+        
+        # All Channels — a copy of every channel
+        all_group = Group(name=self.SPECIAL_GROUP_ALL)
+        all_group.channels = self._channels  # Direct reference, no copy needed
+        self._groups[self.SPECIAL_GROUP_ALL] = all_group
+        
+        # All Livestreams
+        live_channels = [ch for ch in self._channels if ch.channel_type == StreamType.LIVE.value]
+        if live_channels:
+            live_group = Group(name=self.SPECIAL_GROUP_LIVE)
+            live_group.channels = live_channels
+            self._groups[self.SPECIAL_GROUP_LIVE] = live_group
+        
+        # All VODs
+        vod_channels = [ch for ch in self._channels if ch.channel_type == StreamType.VOD.value]
+        if vod_channels:
+            vod_group = Group(name=self.SPECIAL_GROUP_VOD)
+            vod_group.channels = vod_channels
+            self._groups[self.SPECIAL_GROUP_VOD] = vod_group
+        
+        logger.info(
+            f"Created special groups: "
+            f"{self.SPECIAL_GROUP_ALL} ({len(all_group.channels)}), "
+            f"{self.SPECIAL_GROUP_LIVE} ({len(live_channels)}), "
+            f"{self.SPECIAL_GROUP_VOD} ({len(vod_channels)})"
+        )
+
 
     # ==================== Channel/Group Lookup Methods ====================
     
@@ -941,12 +1113,14 @@ class DataLoader:
             data = {
                 "groups": [],
                 "default_group_name": self.default_group_name,
-                "version": "2.0",  # Version for future compatibility
+                "version": "2.1",  # Bumped: special groups no longer saved to cache
                 "statistics": self.get_statistics()
             }
 
-            # Build the groups array with their channels
+            # Build the groups array with their channels (skip special aggregate groups)
             for group_name, group in self._groups.items():
+                if group_name in self.SPECIAL_GROUP_NAMES:
+                    continue
                 group_data = {
                     "name": group.name,
                     "channels": []
@@ -994,6 +1168,12 @@ class DataLoader:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
+            # Reject old cache versions that may contain duplicate special groups
+            cache_version = data.get("version", "1.0")
+            if cache_version < "2.1":
+                logger.info(f"Stale cache version {cache_version}, forcing fresh load")
+                return False
+
             # Set default group name if provided
             if "default_group_name" in data:
                 self.default_group_name = data["default_group_name"]
@@ -1017,6 +1197,9 @@ class DataLoader:
                     self._channel_index[channel.name.lower()] = channel
 
                 self._groups[group_name] = group
+
+            # Recreate special aggregate groups from loaded data
+            self._create_special_groups()
 
             logger.info(f"Loaded {len(self._channels)} channels from {file_path}")
             return len(self._channels) > 0

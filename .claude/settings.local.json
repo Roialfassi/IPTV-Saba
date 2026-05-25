@@ -3,7 +3,13 @@
     "allow": [
       "Bash(wc:*)",
       "Bash(python:*)",
-      "Bash(venv/Scripts/python.exe -c:*)"
+      "Bash(venv/Scripts/python.exe -c:*)",
+      "WebSearch",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:forum.videolan.org)",
+      "WebFetch(domain:www.qtcentre.org)",
+      "WebFetch(domain:forum.qt.io)"
     ]
   }
 }

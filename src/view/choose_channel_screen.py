@@ -34,6 +34,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
+MAX_DISPLAY_CHANNELS = 200  # Cap channel list display for performance
 
 # ============================================================
 #  Compact icon-style button factory
@@ -102,9 +103,7 @@ class LoaderWorker(QObject):
         self.profile_name = str(controller.active_profile.name)
         self.config_dir = str(controller.config_dir)
         self.is_within_24_hours = controller.active_profile.is_within_24_hours()
-        from src.data.data_loader import DataLoader
-        self.loader = DataLoader()
-        self.controller_loader = controller.data_loader
+        self.loader = controller.data_loader  # Use controller's loader directly
 
     def _progress_callback(self, current, total, message):
         if total > 0:
@@ -136,7 +135,7 @@ class LoaderWorker(QObject):
                     self.controller.profile_manager.update_profile(self.controller.active_profile)
                     self.controller.profile_manager.export_profiles(self.controller.profile_path)
 
-            self.data_loaded.emit(self.loader)
+            self.data_loaded.emit(None)  # Signal that loading is done
             self.progress_message.emit("Loading complete!")
             self.finished.emit()
         except Exception as e:
@@ -211,13 +210,17 @@ class ChooseChannelScreen(QWidget):
     # ── init ────────────────────────────────────────────────
     def __init__(self, controller: Controller, parent=None):
         super().__init__(parent)
-        self.all_groups = {}
+        self.all_groups = []
+        self._all_groups_lower = []  # Pre-lowered for fast search
         self.all_channels = []
+        self._all_channels_lower = []  # Pre-lowered for fast search
+        self._cached_fav_names = None  # Cached favorite names set
         self.controller = controller
         self.active_channel = None
         self.fullscreen_view = None
         self.thread = None
         self.worker = None
+        self._badge_map = {}
 
         self._build_ui()
         self._connect_signals()
@@ -234,6 +237,17 @@ class ChooseChannelScreen(QWidget):
         self.recording_scheduler = RecordingScheduler(self.schedule_manager, self.download_manager)
         self._setup_scheduler_signals()
         self.recording_scheduler.start()
+
+        # Search debounce timers
+        self._channel_search_timer = QTimer()
+        self._channel_search_timer.setSingleShot(True)
+        self._channel_search_timer.setInterval(250)
+        self._channel_search_timer.timeout.connect(self._do_filter_channels)
+
+        self._group_search_timer = QTimer()
+        self._group_search_timer.setSingleShot(True)
+        self._group_search_timer.setInterval(200)
+        self._group_search_timer.timeout.connect(self._do_filter_groups)
 
         # Overlays
         self.loading_overlay = LoadingOverlay(self)
@@ -498,10 +512,10 @@ class ChooseChannelScreen(QWidget):
 
     # ── connect signals ─────────────────────────────────────
     def _connect_signals(self):
-        # Sidebar
-        self.group_search_bar.textChanged.connect(self.filter_groups)
+        # Sidebar (debounced search)
+        self.group_search_bar.textChanged.connect(lambda: self._group_search_timer.start())
         self.group_list.itemClicked.connect(self.on_group_selected)
-        self.channel_search_bar.textChanged.connect(self.filter_channels)
+        self.channel_search_bar.textChanged.connect(lambda: self._channel_search_timer.start())
         self.channel_list.itemClicked.connect(self.on_channel_selected)
         self.channel_tabs.currentChanged.connect(self._on_channel_tab_changed)
 
@@ -574,11 +588,19 @@ class ChooseChannelScreen(QWidget):
     #  Channel list helpers
     # ============================================================
 
+    def _set_all_channels(self, channels):
+        """Set channel list and pre-compute lowercase names for search."""
+        self.all_channels = channels
+        self._all_channels_lower = [ch.lower() for ch in channels]
+
     def _get_favorite_names(self):
+        if self._cached_fav_names is not None:
+            return self._cached_fav_names
         try:
-            return {ch.name for ch in self.controller.active_profile.favorites}
+            self._cached_fav_names = {ch.name for ch in self.controller.active_profile.favorites}
         except Exception:
-            return set()
+            self._cached_fav_names = set()
+        return self._cached_fav_names
 
     def _get_channel_badge(self, channel_name):
         try:
@@ -592,14 +614,30 @@ class ChooseChannelScreen(QWidget):
         return ""
 
     def _add_channel_items(self, channel_names):
+        self.channel_list.setUpdatesEnabled(False)
         self.channel_list.clear()
         fav_names = self._get_favorite_names()
-        for name in channel_names:
+
+        # Cap displayed items for performance
+        display_names = channel_names[:MAX_DISPLAY_CHANNELS]
+        truncated = len(channel_names) > MAX_DISPLAY_CHANNELS
+
+        for name in display_names:
             prefix = "[F] " if name in fav_names else ""
-            badge = self._get_channel_badge(name)
+            badge = self._badge_map.get(name, "")
             item = QListWidgetItem(f"{prefix}{name}{badge}")
             item.setData(Qt.UserRole, name)
             self.channel_list.addItem(item)
+
+        if truncated:
+            overflow = QListWidgetItem(
+                f"... and {len(channel_names) - MAX_DISPLAY_CHANNELS} more \u2014 use search to filter"
+            )
+            overflow.setFlags(overflow.flags() & ~Qt.ItemIsSelectable)
+            overflow.setForeground(QColor("#888"))
+            self.channel_list.addItem(overflow)
+
+        self.channel_list.setUpdatesEnabled(True)
 
     def _get_selected_channel_name(self):
         selected_item = self.channel_list.currentItem()
@@ -619,7 +657,7 @@ class ChooseChannelScreen(QWidget):
                 self.on_group_selected()
             else:
                 self.channel_list.clear()
-                self.all_channels = []
+                self._set_all_channels([])
         elif index == 1:
             self.show_favorites()
         elif index == 2:
@@ -680,39 +718,64 @@ class ChooseChannelScreen(QWidget):
             logger.error(f"Failed to start loading: {e}")
             self.show_error(f"Failed to start loading: {str(e)}")
 
-    def _on_data_loaded_from_worker(self, loaded_data_loader):
+    def _on_data_loaded_from_worker(self, _unused):
         try:
-            self.controller.data_loader._groups = loaded_data_loader._groups
-            self.controller.data_loader._channels = loaded_data_loader._channels
-            self.controller.data_loader._channel_index = loaded_data_loader._channel_index
-            logger.info(f"Transferred {len(loaded_data_loader._groups)} groups to controller")
+            loader = self.controller.data_loader
+            logger.info(f"Data loaded: {len(loader._groups)} groups, {len(loader._channels)} channels")
+
+            # Invalidate controller caches after data reload
+            self.controller._channel_names_cache.clear()
+
+            # Pre-compute badge map once for all channels
+            self._badge_map = {}
+            for ch in loader.channels:
+                if ch.channel_type:
+                    self._badge_map[ch.name] = f"  [{ch.channel_type.upper()}]"
         except Exception as e:
-            logger.error(f"Error transferring loaded data: {e}")
+            logger.error(f"Error processing loaded data: {e}")
 
     def on_loading_finished(self):
         self.loading_overlay.hide()
         self.load_groups()
 
-    def load_groups(self):
+    def _add_group_items(self, group_names):
+        """Add group names to the list with channel counts."""
         self.group_list.clear()
+        groups_dict = self.controller.data_loader.groups
+        for name in group_names:
+            group = groups_dict.get(name)
+            count = len(group.channels) if group else 0
+            item = QListWidgetItem(f"{name}  ({count:,})")
+            item.setData(Qt.UserRole, name)
+            self.group_list.addItem(item)
+
+    def load_groups(self):
         groups = self.controller.list_groups()
         self.all_groups = groups
-        self.group_list.addItems(groups)
+        self._all_groups_lower = [g.lower() for g in groups]
+        self._add_group_items(groups)
 
     def populate_group_list(self):
-        self.group_list.clear()
-        for group_name in sorted(self.groups_dict.keys()):
-            self.group_list.addItem(group_name)
+        self._add_group_items(sorted(self.groups_dict.keys()))
 
     def filter_groups(self, text):
-        self.group_list.clear()
-        filtered = [g for g in self.all_groups if text.lower() in g.lower()]
-        self.group_list.addItems(filtered)
+        text_lower = text.lower()
+        filtered = [g for g, g_low in zip(self.all_groups, self._all_groups_lower)
+                    if text_lower in g_low]
+        self._add_group_items(filtered)
+
+    def _do_filter_groups(self):
+        self.filter_groups(self.group_search_bar.text())
 
     def filter_channels(self, text):
         if self.all_channels:
-            filtered = [ch for ch in self.all_channels if text.lower() in ch.lower()]
+            text_lower = text.lower()
+            filtered = [ch for ch, ch_low in zip(self.all_channels, self._all_channels_lower)
+                        if text_lower in ch_low]
             self._add_channel_items(filtered)
+
+    def _do_filter_channels(self):
+        self.filter_channels(self.channel_search_bar.text())
 
     # ============================================================
     #  Channel / playback actions
@@ -896,19 +959,19 @@ class ChooseChannelScreen(QWidget):
     def show_favorites(self):
         if not self.controller.active_profile.favorites:
             self.channel_list.clear()
-            self.all_channels = []
+            self._set_all_channels([])
             return
         fav_names = self.controller.active_profile.list_channels_in_favorites()
-        self.all_channels = fav_names
+        self._set_all_channels(fav_names)
         self._add_channel_items(fav_names)
 
     def show_history(self):
         if not self.controller.active_profile.history:
             self.channel_list.clear()
-            self.all_channels = []
+            self._set_all_channels([])
             return
         hist_names = self.controller.active_profile.list_channels_in_history()
-        self.all_channels = hist_names
+        self._set_all_channels(hist_names)
         self._add_channel_items(hist_names)
 
     def open_context_menu(self, position):
@@ -944,17 +1007,21 @@ class ChooseChannelScreen(QWidget):
         name = self._get_selected_channel_name()
         if name:
             self.controller.add_to_favorites(name)
+            self._cached_fav_names = None
 
     def remove_selected_from_favorites(self):
         name = self._get_selected_channel_name()
         if name:
             self.controller.remove_from_favorites(name)
+            self._cached_fav_names = None
 
     def add_to_favorites(self, channel_name):
         self.controller.add_to_favorites(channel_name)
+        self._cached_fav_names = None
 
     def remove_from_favorites(self, channel_name):
         self.controller.remove_from_favorites(channel_name)
+        self._cached_fav_names = None
 
     @pyqtSlot(dict)
     def on_data_loaded(self, groups):
@@ -965,17 +1032,17 @@ class ChooseChannelScreen(QWidget):
     def on_group_selected(self):
         selected_item = self.group_list.currentItem()
         if selected_item:
-            group_name = selected_item.text()
+            group_name = selected_item.data(Qt.UserRole) or selected_item.text()
             channels = self.controller.list_channels_in_group(group_name)
-            self.all_channels = channels
-            self._add_channel_items(channels)
+            self._set_all_channels(sorted(channels))  # Sort once here
+            self._add_channel_items(self.all_channels)
             # Reset to "All" tab silently
             self.channel_tabs.blockSignals(True)
             self.channel_tabs.setCurrentIndex(0)
             self.channel_tabs.blockSignals(False)
 
     def populate_channel_list(self, channel_names):
-        self._add_channel_items(sorted(channel_names))
+        self._add_channel_items(channel_names)
 
     @pyqtSlot(str)
     def on_error_occurred(self, error_message):

@@ -28,11 +28,13 @@ class Controller(QObject):
         self.profile_path = os.path.join(self.config_dir, profiles_file)  # path to profile
 
         self.profile_manager = ProfileManager(self.config_dir, profiles_file)  # login
-        self.data_loader = DataLoader()  # login
+        cache_dir = os.path.join(self.config_dir, 'cache')
+        self.data_loader = DataLoader(cache_dir=cache_dir)  # login
         self.active_profile: Optional[Profile] = None  # if logged in
         self.selected_group: Optional[Group] = None
         self.active_window = None
         self.last_window = None
+        self._channel_names_cache: Dict[str, List[str]] = {}
         logger.info("Controller initialized.")
 
     def login_logic(self):
@@ -120,12 +122,17 @@ class Controller(QObject):
     def list_groups(self) -> List[str]:
         """
         Lists all group names from the loaded IPTV data.
+        Special groups (All Channels, All VODs, etc.) are pinned to the top.
 
         Returns:
             List[str]: A list of group names.
         """
-        group_names = list(self.data_loader.groups.keys())
-        logger.debug(f"Available groups: {group_names}")
+        from src.data.data_loader import DataLoader
+        all_names = list(self.data_loader.groups.keys())
+        special = [n for n in all_names if n in DataLoader.SPECIAL_GROUP_NAMES]
+        regular = [n for n in all_names if n not in DataLoader.SPECIAL_GROUP_NAMES]
+        group_names = special + regular
+        logger.debug(f"Available groups: {len(group_names)} ({len(special)} special)")
         return group_names
 
     @pyqtSlot(str)
@@ -170,9 +177,10 @@ class Controller(QObject):
                 self.error_occurred.emit("No group selected.")
                 return []
 
-        channel_names = [channel.name for channel in group.channels]
-        # logger.debug(f"Channels in group '{group.name}': {channel_names}")
-        return channel_names
+        cache_key = group.name
+        if cache_key not in self._channel_names_cache:
+            self._channel_names_cache[cache_key] = [channel.name for channel in group.channels]
+        return self._channel_names_cache[cache_key]
 
     @pyqtSlot(str)
     def search_channels(self, query: str) -> List[Channel]:
@@ -185,17 +193,15 @@ class Controller(QObject):
         Returns:
             List[Channel]: A list of matching channels.
         """
-        matched_channels = []
-        for group in self.data_loader.groups.values():
-            for channel in group.channels:
-                if query.lower() in channel.name.lower():
-                    matched_channels.append(channel)
+        query_lower = query.lower()
+        matched_channels = [ch for ch in self.data_loader.channels if query_lower in ch.name.lower()]
         logger.debug(f"Found {len(matched_channels)} channel(s) matching query '{query}'.")
         return matched_channels
 
     def find_channel_by_name(self, channel_name: str) -> Optional[Channel]:
         """
         Finds a channel object by its name.
+        Delegates to DataLoader's indexed O(1) lookup.
 
         Args:
             channel_name (str): The name of the channel to find.
@@ -203,13 +209,7 @@ class Controller(QObject):
         Returns:
             Optional[Channel]: The channel object if found, else None.
         """
-        for group in self.data_loader.groups.values():
-            for channel in group.channels:
-                if channel.name.lower() == channel_name.lower():
-                    logger.debug(f"Channel '{channel_name}' found in group '{group.name}'.")
-                    return channel
-        logger.debug(f"Channel '{channel_name}' not found in any group.")
-        return None
+        return self.data_loader.get_channel_by_name(channel_name)
 
     def add_to_history(self, channel: Channel) -> None:
         """
