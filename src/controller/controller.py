@@ -10,7 +10,6 @@ from src.model.group_model import Group
 from src.model.profile import Profile
 from src.data.config_manager import ConfigManager
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -19,6 +18,7 @@ class Controller(QObject):
     error_occurred = pyqtSignal(str)
     profile_selected = pyqtSignal(str)  # login
     data_loaded = pyqtSignal(dict)
+    channels_updated = pyqtSignal(list)  # emitted by select_group with channel names
 
     def __init__(self, profiles_file: str = "profiles.json", folder_name: str = 'IPTV-Saba'):
         super().__init__()

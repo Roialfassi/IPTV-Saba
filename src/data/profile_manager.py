@@ -20,7 +20,6 @@ class ProfileManager:
         self.profiles_dict = {}  # fast lookup: key=name, value=Profile
         self.profiles_list = []  # maintain order
         os.makedirs(self.profiles_folder, exist_ok=True)
-        logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s")
         if os.path.exists(self.file_path):
             self.load_profiles()
 

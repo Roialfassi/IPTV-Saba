@@ -12,16 +12,16 @@ from urllib.parse import urlparse
 import os
 import logging
 import io
+import codecs
 import chardet
 from collections import defaultdict
 from PyQt5.QtCore import pyqtSignal, QObject, pyqtSlot, QThread
 import threading
-from queue import Queue
+from queue import Queue, Empty
 import concurrent.futures
 import time
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Logging is configured centrally in iptv_app.py; just get a module logger.
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +31,14 @@ class StreamType(Enum):
     VOD = "vod"
     SERIES = "series"
     UNKNOWN = "unknown"
+
+
+class LoadResult(Enum):
+    """Outcome of a cache-aware load (see DataLoader.load_smart)."""
+    LOADED = "loaded"                # validated against the source (HTTP 200 or 304)
+    CACHE_FRESH = "cache_fresh"      # served from cache within TTL, no network used
+    CACHE_OFFLINE = "cache_offline"  # network unavailable, served the cached copy
+    FAILED = "failed"                # no data could be loaded
 
 
 class DataLoader:
@@ -413,11 +421,118 @@ class DataLoader:
         except Exception as e:
             logger.warning(f"Failed to save cache: {e}")
 
+    def _cache_file_exists(self, url: str) -> bool:
+        """True if a parsed cache file exists on disk for this URL."""
+        return bool(self._cache_dir) and os.path.isfile(self._get_cache_file_path(url))
+
+    def get_cache_age(self, url: str) -> Optional[float]:
+        """
+        Age of the cached copy for a URL, in seconds, or None if there is no
+        cache (or no recorded timestamp). Based on the URL-keyed metadata.
+        """
+        if not self._cache_dir:
+            return None
+        entry = self._load_cache_metadata().get(self._get_url_hash(url), {})
+        cached_at = entry.get('cached_at')
+        if not isinstance(cached_at, (int, float)):
+            return None
+        return max(0.0, time.time() - cached_at)
+
     # ==================== Main Loading Methods ====================
-    
+
+    def _load_cache_with_progress(
+        self,
+        cache_path: str,
+        progress_callback: Callable[[int, int, str], None],
+        message: str
+    ) -> bool:
+        """Load a parsed cache file, emitting a couple of progress messages."""
+        self._progress_callback = progress_callback
+        try:
+            self._report_progress(0, 0, message)
+            ok = self.load_from_json(cache_path)
+            if ok:
+                self._report_progress(
+                    100, 100,
+                    f"Loaded {len(self._channels)} channels in {len(self._groups)} groups from cache"
+                )
+            return ok
+        finally:
+            self._progress_callback = None
+
+    def load_smart(
+        self,
+        url: str,
+        progress_callback: Callable[[int, int, str], None] = None,
+        ttl_seconds: Optional[float] = None
+    ) -> 'LoadResult':
+        """
+        Unified, URL-keyed, cache-aware load. This is the single entry point
+        callers should use for a profile playlist.
+
+        Policy:
+          1. Offline fast-path: if ``ttl_seconds`` is given and a cached copy
+             exists that is younger than ``ttl_seconds``, load it WITHOUT any
+             network request. Default ``ttl_seconds=None`` always validates so
+             playlist changes are picked up promptly.
+          2. Primary path: a conditional GET (If-None-Match / If-Modified-Since).
+             The server returns 304 when the playlist is unchanged (cheap, no
+             body) and the cache is reused; a 200 streams and re-parses. Either
+             way the result is ``LOADED``.
+          3. If the network is unreachable, fall back to the cached copy
+             (``CACHE_OFFLINE``) when one exists, otherwise ``FAILED``.
+
+        The cache is keyed by URL, so editing a profile's URL transparently
+        switches to a different cache entry (no stale data from the old URL).
+
+        Args:
+            url: Playlist URL (http/https), local file path, or M3U content.
+            progress_callback: Optional callback(current, total, message).
+            ttl_seconds: Optional offline fast-path window; None = always validate.
+
+        Returns:
+            LoadResult describing how the data was obtained.
+        """
+        parsed = urlparse(url)
+        is_remote = parsed.scheme in ('http', 'https')
+
+        # Local files / inline content have no cache layer — parse directly.
+        if not is_remote:
+            ok = self.load(url, progress_callback=progress_callback)
+            return LoadResult.LOADED if ok else LoadResult.FAILED
+
+        cache_path = self._get_cache_file_path(url) if self._cache_dir else None
+        have_cache = bool(cache_path) and os.path.isfile(cache_path)
+
+        # 1. Offline fast-path within TTL — skip the network entirely.
+        if ttl_seconds is not None and have_cache:
+            age = self.get_cache_age(url)
+            if age is not None and age < ttl_seconds:
+                if self._load_cache_with_progress(cache_path, progress_callback, "Loading from cache..."):
+                    logger.info(f"Cache fresh (age {age / 3600:.1f}h < TTL); skipped network")
+                    return LoadResult.CACHE_FRESH
+                logger.warning("Fresh cache unreadable; validating against network instead")
+
+        # 2. Primary path: conditional GET (handles 304 + cache save internally).
+        try:
+            if self.load(url, progress_callback=progress_callback):
+                return LoadResult.LOADED
+            logger.warning("Network load returned no data; attempting cache fallback")
+        except Exception as e:
+            logger.warning(f"Network load failed: {type(e).__name__}: {e}; attempting cache fallback")
+
+        # 3. Offline fallback — serve the cached copy if we have one.
+        if have_cache and self._load_cache_with_progress(
+            cache_path, progress_callback, "Network unavailable, loading cached copy..."
+        ):
+            logger.info("Served cached copy after network failure")
+            return LoadResult.CACHE_OFFLINE
+
+        return LoadResult.FAILED
+
     def load(
-        self, 
-        source: str, 
+        self,
+        source: str,
         use_optimized: bool = True,
         progress_callback: Callable[[int, int, str], None] = None
     ) -> bool:
@@ -561,8 +676,10 @@ class DataLoader:
         # Cache for group instances to avoid dictionary lookups
         group_cache = {}
 
-        # Optimize line splitting for large files
-        content = content.replace('\r\n', '\n').replace('\r', '\n')
+        # Optimize line splitting for large files. Strip a leading BOM if
+        # present — str.strip() does NOT remove U+FEFF, so the header check
+        # below would otherwise reject BOM-prefixed playlists.
+        content = content.lstrip('﻿').replace('\r\n', '\n').replace('\r', '\n')
         lines = content.split('\n')
         total_lines = len(lines)
 
@@ -753,8 +870,15 @@ class DataLoader:
             encoding = detected['encoding'] if detected['confidence'] > 0.7 else 'utf-8'
             logger.debug(f"Detected encoding: {encoding} (confidence: {detected.get('confidence', 0):.2f})")
 
-            # Process data in chunks with streaming parser
-            line_buffer = first_chunk.decode(encoding, errors='replace')
+            # Incremental decoder so multibyte characters that straddle a chunk
+            # boundary are decoded correctly — a per-chunk decode would corrupt
+            # any character split across two chunks.
+            decoder = codecs.getincrementaldecoder(encoding)(errors='replace')
+
+            # Process data in chunks with streaming parser. Strip a leading BOM
+            # if present — str.strip() does NOT remove U+FEFF, so the header
+            # check below would otherwise reject BOM-prefixed playlists.
+            line_buffer = decoder.decode(first_chunk).lstrip('﻿')
             bytes_downloaded += len(first_chunk)
 
             # Validate M3U header
@@ -771,14 +895,22 @@ class DataLoader:
 
             # Worker function for parallel channel processing
             def process_channel_worker():
-                while not processing_complete.is_set() or not channel_queue.empty():
+                while True:
                     try:
                         item = channel_queue.get(timeout=0.1)
-                        if item is None:  # Poison pill
+                    except Empty:
+                        # No work pending; exit once the producer is finished.
+                        if processing_complete.is_set():
                             break
+                        continue
 
+                    if item is None:  # Poison pill
+                        channel_queue.task_done()
+                        break
+
+                    try:
                         metadata, stream_url = item
-                        
+
                         # Detect stream type
                         stream_type = self.detect_stream_type(
                             stream_url,
@@ -812,10 +944,12 @@ class DataLoader:
                         with channels_lock:
                             self._channels.append(channel)
                             self._channel_index[channel.name.lower()] = channel
-
+                    except Exception as e:
+                        logger.debug(f"Failed to process channel item: {type(e).__name__}: {e}")
+                    finally:
+                        # Always balance the get() so channel_queue.join()
+                        # cannot hang if processing raised.
                         channel_queue.task_done()
-                    except Exception:
-                        pass
 
             # Start worker threads (4 workers for parallel processing)
             num_workers = 4
@@ -874,8 +1008,14 @@ class DataLoader:
             for chunk in response.iter_content(chunk_size):
                 if chunk:
                     bytes_downloaded += len(chunk)
-                    decoded_chunk = chunk.decode(encoding, errors='replace')
-                    process_lines(decoded_chunk)
+                    decoded_chunk = decoder.decode(chunk)
+                    if decoded_chunk:
+                        process_lines(decoded_chunk)
+
+            # Flush any bytes the incremental decoder held back at the end.
+            tail = decoder.decode(b'', final=True)
+            if tail:
+                process_lines(tail)
 
             # Process any remaining buffered data
             if line_buffer.strip():
@@ -1168,9 +1308,14 @@ class DataLoader:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            # Reject old cache versions that may contain duplicate special groups
+            # Reject old cache versions that may contain duplicate special groups.
+            # Compare numerically — string compare is wrong (e.g. "2.10" < "2.9").
             cache_version = data.get("version", "1.0")
-            if cache_version < "2.1":
+            try:
+                version_tuple = tuple(int(p) for p in str(cache_version).split("."))
+            except ValueError:
+                version_tuple = (0,)
+            if version_tuple < (2, 1):
                 logger.info(f"Stale cache version {cache_version}, forcing fresh load")
                 return False
 

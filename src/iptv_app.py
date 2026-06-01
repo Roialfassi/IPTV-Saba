@@ -1,6 +1,29 @@
 import ctypes
 import logging
+import os
 import sys
+
+
+def _configure_logging() -> None:
+    """
+    Configure root logging once for the whole application.
+
+    Modules elsewhere only call ``logging.getLogger(__name__)`` and must NOT
+    call ``basicConfig`` themselves. Default level is INFO; set the env var
+    ``IPTV_LOG_LEVEL`` (e.g. DEBUG) to override. Keeping the default at INFO
+    avoids leaking full playlist URLs (which may embed credentials/tokens) into
+    logs of the shipped build.
+    """
+    level_name = os.environ.get("IPTV_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+
+# Configure logging before importing modules that create loggers at import time.
+_configure_logging()
 
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QMessageBox
@@ -12,8 +35,6 @@ from src.view.login_view import LoginScreen
 from src.view.choose_channel_screen import ChooseChannelScreen
 from src.services.shared_player_manager import SharedPlayerManager
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

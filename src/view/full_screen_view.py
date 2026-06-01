@@ -35,7 +35,6 @@ except ImportError:
     get_shared_player = None
     SharedPlayerManager = None
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Constants

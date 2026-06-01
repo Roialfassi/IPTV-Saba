@@ -4,8 +4,7 @@ import re
 import requests
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Logging is configured centrally in iptv_app.py; just get a module logger.
 logger = logging.getLogger(__name__)
 
 

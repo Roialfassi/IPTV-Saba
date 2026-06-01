@@ -16,7 +16,7 @@ from PyQt5.QtGui import QFont, QIcon, QColor
 import vlc
 
 from src.controller.controller import Controller
-from src.data.data_loader import DataLoader
+from src.data.data_loader import DataLoader, LoadResult
 from src.model.group_model import Group
 from src.model.channel_model import Channel
 from src.model.profile import create_mock_profile, Profile
@@ -30,7 +30,6 @@ from src.services.schedule_manager import ScheduleManager
 from src.services.recording_scheduler import RecordingScheduler
 from src.utils.resource_path import resource_path
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
@@ -100,9 +99,6 @@ class LoaderWorker(QObject):
         super().__init__()
         self.controller = controller
         self.source = str(controller.active_profile.url)
-        self.profile_name = str(controller.active_profile.name)
-        self.config_dir = str(controller.config_dir)
-        self.is_within_24_hours = controller.active_profile.is_within_24_hours()
         self.loader = controller.data_loader  # Use controller's loader directly
 
     def _progress_callback(self, current, total, message):
@@ -112,28 +108,32 @@ class LoaderWorker(QObject):
 
     def run(self):
         try:
-            data_path = Path(os.path.join(self.config_dir, self.profile_name + "data.json"))
-            if self.is_within_24_hours and data_path.is_file():
-                self.progress_message.emit("Loading from cache...")
-                self.loader.load_from_json(data_path)
-            else:
-                self.progress_message.emit("Downloading playlist...")
-                success = self.loader.load(self.source, progress_callback=self._progress_callback)
-                if not success:
-                    self.error.emit("Failed to load IPTV data from URL")
-                    self.progress_message.emit("Falling back to cached data...")
-                    if data_path.is_file():
-                        self.loader.load_from_json(data_path)
-                    else:
-                        self.error.emit("No cached data available")
-                        self.finished.emit()
-                        return
-                else:
-                    self.progress_message.emit("Saving to cache...")
-                    self.loader.save_to_json(data_path)
-                    self.controller.active_profile.update_last_loaded()
-                    self.controller.profile_manager.update_profile(self.controller.active_profile)
-                    self.controller.profile_manager.export_profiles(self.controller.profile_path)
+            # Unified, URL-keyed, cache-aware load. A conditional GET picks up
+            # playlist changes promptly (cheap HTTP 304 when unchanged) and the
+            # cache is reused automatically on 304 or when the network is down.
+            result = self.loader.load_smart(
+                self.source, progress_callback=self._progress_callback
+            )
+
+            if result == LoadResult.FAILED:
+                self.error.emit("Failed to load IPTV data and no cached copy is available.")
+                self.finished.emit()
+                return
+
+            if result == LoadResult.CACHE_OFFLINE:
+                # Non-fatal: we have data to show, just couldn't reach the server.
+                self.error.emit("Network unavailable — showing the last saved playlist.")
+
+            # Record a successful, server-validated load on the profile.
+            # Only on a genuine download (LOADED) — not on cache-only paths —
+            # do we re-bind favorites/history to the freshly parsed Channel
+            # objects so their stream URLs track playlist changes.
+            if result == LoadResult.LOADED:
+                self.controller.active_profile.update_favorites(self.loader)
+                self.controller.active_profile.update_history(self.loader)
+                self.controller.active_profile.update_last_loaded()
+                self.controller.profile_manager.update_profile(self.controller.active_profile)
+                self.controller.profile_manager.export_profiles(self.controller.profile_path)
 
             self.data_loaded.emit(None)  # Signal that loading is done
             self.progress_message.emit("Loading complete!")

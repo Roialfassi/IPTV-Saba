@@ -28,7 +28,6 @@ import requests
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 import vlc
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

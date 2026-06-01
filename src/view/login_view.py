@@ -11,8 +11,7 @@ from PyQt5.QtGui import QFont, QIcon
 from src.controller.controller import Controller
 from src.utils.resource_path import resource_path
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Logging is configured centrally in iptv_app.py; just get a module logger.
 logger = logging.getLogger(__name__)
 
 # Constants

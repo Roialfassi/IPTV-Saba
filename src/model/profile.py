@@ -10,7 +10,6 @@ import requests
 from src.data.data_loader import DataLoader
 from src.model.channel_model import Channel
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -80,18 +79,6 @@ class Profile:
         Updates the last_loaded timestamp to the current UTC time in ISO format.
         """
         self.last_loaded = int(round(datetime.now().timestamp()))
-
-    def needs_refresh(self) -> bool:
-        """
-        Determines whether the channel data needs to be refreshed based on the last_loaded timestamp.
-
-        Returns:
-            bool: True if data needs to be refreshed (i.e., last_loaded was over 24 hours ago or never), False otherwise.
-        """
-        if not self.last_loaded:
-            return True
-        last_loaded_time = datetime.fromtimestamp(self.last_loaded)
-        return (datetime.utcnow() - last_loaded_time).total_seconds() > 86400  # 24 hours
 
     def __str__(self) -> str:
         """
@@ -430,10 +417,12 @@ class Profile:
 
     def is_within_24_hours(self) -> bool:
         """
-        Checks if the given last_loaded timestamp is within the last 24 hours.
+        Canonical freshness check: True if ``last_loaded`` is set and within the
+        last 24 hours. Uses local time consistently with ``update_last_loaded``.
 
-        Args:
-            last_loaded_str (str): The last_loaded timestamp in ISO format.
+        Note: the cache-vs-network decision now lives in
+        ``DataLoader.load_smart`` (URL-keyed, conditional-GET based). This helper
+        is retained for any UI/telemetry that wants a coarse freshness signal.
 
         Returns:
             bool: True if the timestamp is within the last 24 hours, False otherwise.

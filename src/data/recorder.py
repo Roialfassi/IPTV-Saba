@@ -49,12 +49,8 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 # ------------------------  Logging setup  ------------------------ #
+# Logging is configured centrally in iptv_app.py; just get a module logger.
 _LOG = logging.getLogger("stream_recorder")
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s %(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 
 
 # ------------------------  Core recorder  ------------------------ #

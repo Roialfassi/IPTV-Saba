@@ -15,7 +15,6 @@ from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QWidget
 import vlc
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Import StreamHealthTracker (lazy to avoid circular imports)
