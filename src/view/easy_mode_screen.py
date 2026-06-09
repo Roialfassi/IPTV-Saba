@@ -9,6 +9,11 @@ import vlc
 
 from src.model.profile import create_mock_profile, Profile
 from src.utils.resource_path import resource_path
+from src.utils.vlc_helpers import (
+    vlc_instance_args,
+    safe_release_player,
+    safe_release_instance,
+)
 
 # Logging is configured centrally in iptv_app.py; just get a module logger.
 logger = logging.getLogger(__name__)
@@ -42,7 +47,9 @@ class EasyModeScreen(QWidget):
         super().__init__()
         self.profile = profile
         self.current_channel_index = 0
-        self.vlc_instance = vlc.Instance()
+        # EasyMode keeps its own VLC instance (it does NOT use
+        # SharedPlayerManager), but shares the same plugin-path detection.
+        self.vlc_instance = vlc.Instance(vlc_instance_args())
         self.player = self.vlc_instance.media_player_new()
         self.init_ui()
         self.play_channel()
@@ -429,43 +436,13 @@ class EasyModeScreen(QWidget):
         if self.is_fullscreen:
             self.toggle_fullscreen()
 
-        # Proper VLC cleanup with Windows-safe approach
-        try:
-            if hasattr(self, 'player') and self.player:
-                # Pause first instead of stop (safer on Windows)
-                try:
-                    if self.player.is_playing():
-                        self.player.set_pause(1)
-                except Exception:
-                    pass
-
-                # Set media to None to help release internal resources
-                try:
-                    self.player.set_media(None)
-                except Exception:
-                    pass
-
-                # On Windows, skip stop() as it can crash
-                if sys.platform != "win32":
-                    try:
-                        self.player.stop()
-                    except Exception:
-                        pass
-
-                try:
-                    self.player.release()
-                except Exception as e:
-                    logger.warning(f"Error releasing player: {e}")
-                self.player = None
-
-            if hasattr(self, 'vlc_instance') and self.vlc_instance:
-                try:
-                    self.vlc_instance.release()
-                except Exception as e:
-                    logger.warning(f"Error releasing VLC instance: {e}")
-                self.vlc_instance = None
-        except Exception as e:
-            logger.error(f"Error during EasyModeScreen cleanup: {e}")
+        # Windows-safe VLC teardown (shared with SharedPlayerManager). Null out
+        # the references so a later cleanup pass (e.g. app aboutToQuit) is a
+        # no-op rather than a double-release.
+        safe_release_player(getattr(self, 'player', None))
+        self.player = None
+        safe_release_instance(getattr(self, 'vlc_instance', None))
+        self.vlc_instance = None
 
         event.accept()
 

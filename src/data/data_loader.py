@@ -15,11 +15,12 @@ import io
 import codecs
 import chardet
 from collections import defaultdict
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from PyQt5.QtCore import pyqtSignal, QObject, pyqtSlot, QThread
-import threading
-from queue import Queue, Empty
-import concurrent.futures
 import time
+
+from src.utils.url_utils import redact_url
 
 # Logging is configured centrally in iptv_app.py; just get a module logger.
 logger = logging.getLogger(__name__)
@@ -113,9 +114,8 @@ class DataLoader:
             if status_code is not None:
                 detailed_msg += f" (HTTP {status_code})"
             if source is not None:
-                # Truncate long URLs
-                display_source = source[:80] + "..." if len(source) > 80 else source
-                detailed_msg += f" [Source: {display_source}]"
+                # Redact credentials before they reach the message/logs.
+                detailed_msg += f" [Source: {redact_url(source)}]"
             super().__init__(detailed_msg)
 
     class NetworkError(Exception):
@@ -148,11 +148,26 @@ class DataLoader:
         
         # Progress tracking
         self._progress_callback: Optional[Callable[[int, int, str], None]] = None
-        
+
         # HTTP 304 cache directory
         self._cache_dir: Optional[str] = cache_dir
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
+
+        # Reuse one Session across the conditional GET + streaming download so
+        # the TCP/TLS connection (and keep-alive) is pooled instead of being
+        # re-established on every request. Default headers live on the session;
+        # per-request conditional headers (If-None-Match/If-Modified-Since) are
+        # merged on top and take precedence.
+        self._session = requests.Session()
+        self._session.headers.update(self.DEFAULT_HEADERS)
+
+    def close(self) -> None:
+        """Release the pooled HTTP connections held by the session."""
+        try:
+            self._session.close()
+        except Exception as e:
+            logger.debug(f"Error closing HTTP session: {e}")
 
     # ==================== Properties ====================
     
@@ -276,44 +291,54 @@ class DataLoader:
         """
         last_exception = None
         delay = self.INITIAL_RETRY_DELAY
-        
-        # Merge default headers with any extra conditional headers
-        headers = dict(self.DEFAULT_HEADERS)
-        if extra_headers:
-            headers.update(extra_headers)
-        
+        # Honored from a 429 Retry-After header; overrides backoff for one wait.
+        retry_after: Optional[float] = None
+
         for attempt in range(self.MAX_RETRIES):
             try:
-                response = requests.get(
-                    url, 
-                    headers=headers,
-                    stream=stream, 
+                # Default headers come from the pooled session; pass only the
+                # per-request conditional headers (they override the session's).
+                response = self._session.get(
+                    url,
+                    headers=extra_headers or None,
+                    stream=stream,
                     timeout=timeout
                 )
-                
+
                 # Allow 304 Not Modified to pass through without raising
                 if allow_304 and response.status_code == 304:
-                    logger.info(f"Server returned 304 Not Modified for {url}")
+                    logger.info(f"Server returned 304 Not Modified for {redact_url(url)}")
                     return response
-                
+
                 response.raise_for_status()
                 return response
-                
+
             except requests.exceptions.Timeout as e:
                 last_exception = e
-                logger.warning(f"Request timeout (attempt {attempt + 1}/{self.MAX_RETRIES}): {url}")
-                
+                logger.warning(f"Request timeout (attempt {attempt + 1}/{self.MAX_RETRIES}): {redact_url(url)}")
+
             except requests.exceptions.ConnectionError as e:
                 last_exception = e
-                logger.warning(f"Connection error (attempt {attempt + 1}/{self.MAX_RETRIES}): {url}")
-                
+                logger.warning(f"Connection error (attempt {attempt + 1}/{self.MAX_RETRIES}): {redact_url(url)}")
+
             except requests.exceptions.HTTPError as e:
                 # Don't retry on client errors (4xx) except 429 (rate limit)
                 if e.response is not None and 400 <= e.response.status_code < 500:
                     if e.response.status_code == 429:
-                        # Rate limited - wait longer
-                        delay = min(delay * 2, self.MAX_RETRY_DELAY)
-                        logger.warning(f"Rate limited (attempt {attempt + 1}/{self.MAX_RETRIES}), waiting {delay}s")
+                        # Rate limited - prefer the server's Retry-After hint,
+                        # falling back to exponential backoff if it is absent.
+                        retry_after = self._parse_retry_after(
+                            e.response.headers.get('Retry-After')
+                        )
+                        if retry_after is not None:
+                            logger.warning(
+                                f"Rate limited (attempt {attempt + 1}/{self.MAX_RETRIES}); "
+                                f"honoring Retry-After={retry_after:.1f}s"
+                            )
+                        else:
+                            logger.warning(
+                                f"Rate limited (attempt {attempt + 1}/{self.MAX_RETRIES}); backing off"
+                            )
                     else:
                         raise self.SourceError(
                             f"HTTP client error",
@@ -322,15 +347,19 @@ class DataLoader:
                         )
                 last_exception = e
                 logger.warning(f"HTTP error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
-                
+
             except requests.exceptions.RequestException as e:
                 last_exception = e
                 logger.warning(f"Request error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
-            
-            # Wait before retry (exponential backoff)
+
+            # Wait before retry. A 429 Retry-After (this round only) wins over
+            # the exponential backoff schedule.
             if attempt < self.MAX_RETRIES - 1:
-                logger.info(f"Retrying in {delay:.1f} seconds...")
-                time.sleep(delay)
+                wait = retry_after if retry_after is not None else delay
+                wait = min(wait, self.MAX_RETRY_DELAY)
+                logger.info(f"Retrying in {wait:.1f} seconds...")
+                time.sleep(wait)
+                retry_after = None  # consume the hint; backoff resumes next round
                 delay = min(delay * self.BACKOFF_MULTIPLIER, self.MAX_RETRY_DELAY)
         
         # All retries exhausted
@@ -339,6 +368,35 @@ class DataLoader:
             url=url,
             retry_count=self.MAX_RETRIES
         )
+
+    @staticmethod
+    def _parse_retry_after(value: Optional[str]) -> Optional[float]:
+        """
+        Parse an HTTP ``Retry-After`` header into a delay in seconds.
+
+        The header is either a number of seconds ("120") or an HTTP date
+        ("Wed, 21 Oct 2025 07:28:00 GMT"). Returns the non-negative delay in
+        seconds, or None if the value is missing or unparseable (so the caller
+        falls back to its own backoff).
+        """
+        if not value:
+            return None
+        value = value.strip()
+        # Form 1: delta-seconds.
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            pass
+        # Form 2: HTTP-date.
+        try:
+            retry_dt = parsedate_to_datetime(value)
+            if retry_dt is None:
+                return None
+            if retry_dt.tzinfo is None:
+                retry_dt = retry_dt.replace(tzinfo=timezone.utc)
+            return max(0.0, (retry_dt - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError):
+            return None
 
     # ==================== Progress Reporting ====================
     
@@ -718,42 +776,9 @@ class DataLoader:
 
                     if i < len(lines) and lines[i].strip() and not lines[i].strip().startswith('#'):
                         stream_url = lines[i].strip()
-                        
-                        # Detect stream type
-                        stream_type = self.detect_stream_type(
-                            stream_url, 
-                            metadata.get('name', ''),
-                            metadata
-                        )
-
-                        # Create channel with parsed metadata
-                        channel = Channel(
-                            name=metadata.get('name', f"Channel_{len(self._channels) + 1}"),
-                            stream_url=stream_url,
-                            tvg_id=metadata.get('tvg-id', ''),
-                            tvg_logo=metadata.get('tvg-logo', ''),
-                            channel_type=stream_type.value
-                        )
-
-                        # Add channel to appropriate group using cache for performance
-                        # Use string interning for memory optimization
-                        group_name = self._intern_string(
-                            metadata.get('group-title', self.default_group_name)
-                        )
-
-                        if group_name not in group_cache:
-                            if group_name not in self._groups:
-                                self._groups[group_name] = Group(name=group_name)
-                            group_cache[group_name] = self._groups[group_name]
-
-                        group_cache[group_name].channels.append(channel)
-                        self._channels.append(channel)
-                        
-                        # Update channel index for fast lookup
-                        self._channel_index[channel.name.lower()] = channel
-                        
+                        self._add_channel_from_metadata(metadata, stream_url, group_cache)
                         channels_parsed += 1
-                        
+
                         # Report progress every 100 channels
                         if channels_parsed - last_progress_report >= 100:
                             self._report_progress(i, total_lines, f"Parsed {channels_parsed} channels...")
@@ -798,15 +823,60 @@ class DataLoader:
 
         return metadata
 
+    def _add_channel_from_metadata(
+        self,
+        metadata: Dict[str, str],
+        stream_url: str,
+        group_cache: Dict[str, Group],
+    ) -> None:
+        """
+        Build a Channel from parsed EXTINF metadata + its stream URL and
+        register it in the groups dict, the flat channel list and the
+        lowercase-name index. Shared by the file and streaming parsers so the
+        two paths stay in sync.
+
+        ``group_cache`` is a caller-owned dict that memoizes Group lookups for
+        the duration of a single parse. This is single-threaded by design, so
+        channels keep their original playlist order and no locking is needed.
+        """
+        stream_type = self.detect_stream_type(
+            stream_url, metadata.get('name', ''), metadata
+        )
+        channel = Channel(
+            name=metadata.get('name', f"Channel_{len(self._channels) + 1}"),
+            stream_url=stream_url,
+            tvg_id=metadata.get('tvg-id', ''),
+            tvg_logo=metadata.get('tvg-logo', ''),
+            channel_type=stream_type.value,
+        )
+
+        # Intern the group name (it repeats across many channels) and
+        # resolve/create the Group, memoizing the lookup via group_cache.
+        group_name = self._intern_string(
+            metadata.get('group-title', self.default_group_name)
+        )
+        group = group_cache.get(group_name)
+        if group is None:
+            group = self._groups.get(group_name)
+            if group is None:
+                group = Group(name=group_name)
+                self._groups[group_name] = group
+            group_cache[group_name] = group
+
+        group.channels.append(channel)
+        self._channels.append(channel)
+        self._channel_index[channel.name.lower()] = channel
+
     # ==================== Optimized Streaming Parser ====================
     
     def _load_and_parse_streaming(self, url: str) -> bool:
         """
-        Optimized streaming loader that downloads and parses M3U in parallel chunks.
-        This significantly improves loading speed by:
-        1. Streaming download (processing data as it arrives)
-        2. Incremental parsing (parsing lines immediately)
-        3. Parallel processing (using thread pool for channel creation)
+        Stream the M3U over HTTP and parse it incrementally as bytes arrive.
+
+        The download is the bottleneck (network-bound); parsing each line is
+        cheap pure-Python work, so it is done inline on this thread. That keeps
+        channels in playlist order and needs no locks. Supports HTTP 304
+        (serve cache) and writes the cache after a successful 200.
 
         Args:
             url: The URL to download from
@@ -825,7 +895,7 @@ class DataLoader:
 
             # Make streaming request with retry (supports 304 Not Modified)
             self._report_progress(0, 0, "Connecting to server...")
-            logger.info(f"Starting optimized streaming download from {url}")
+            logger.info(f"Starting streaming download from {redact_url(url)}")
             response = self._request_with_retry(
                 url, stream=True, 
                 extra_headers=conditional_headers,
@@ -848,9 +918,8 @@ class DataLoader:
                 logger.warning("Cache file not found despite 304, re-downloading...")
                 response = self._request_with_retry(url, stream=True)
 
-            # Shared data structures with thread safety
-            groups_lock = threading.Lock()
-            channels_lock = threading.Lock()
+            # Per-parse memoization of Group lookups. Single-threaded, so no
+            # locks are needed and channel order is preserved.
             group_cache = {}
 
             # Statistics
@@ -889,85 +958,20 @@ class DataLoader:
                     line_content=line_buffer[:50]
                 )
 
-            # Queue for parallel processing
-            channel_queue = Queue()
-            processing_complete = threading.Event()
-
-            # Worker function for parallel channel processing
-            def process_channel_worker():
-                while True:
-                    try:
-                        item = channel_queue.get(timeout=0.1)
-                    except Empty:
-                        # No work pending; exit once the producer is finished.
-                        if processing_complete.is_set():
-                            break
-                        continue
-
-                    if item is None:  # Poison pill
-                        channel_queue.task_done()
-                        break
-
-                    try:
-                        metadata, stream_url = item
-
-                        # Detect stream type
-                        stream_type = self.detect_stream_type(
-                            stream_url,
-                            metadata.get('name', ''),
-                            metadata
-                        )
-
-                        # Create channel
-                        channel = Channel(
-                            name=metadata.get('name', f"Channel_{len(self._channels) + 1}"),
-                            stream_url=stream_url,
-                            tvg_id=metadata.get('tvg-id', ''),
-                            tvg_logo=metadata.get('tvg-logo', ''),
-                            channel_type=stream_type.value
-                        )
-
-                        # Add to appropriate group (thread-safe)
-                        # Use string interning for memory optimization
-                        group_name = self._intern_string(
-                            metadata.get('group-title', self.default_group_name)
-                        )
-
-                        with groups_lock:
-                            if group_name not in group_cache:
-                                if group_name not in self._groups:
-                                    self._groups[group_name] = Group(name=group_name)
-                                group_cache[group_name] = self._groups[group_name]
-
-                            group_cache[group_name].channels.append(channel)
-
-                        with channels_lock:
-                            self._channels.append(channel)
-                            self._channel_index[channel.name.lower()] = channel
-                    except Exception as e:
-                        logger.debug(f"Failed to process channel item: {type(e).__name__}: {e}")
-                    finally:
-                        # Always balance the get() so channel_queue.join()
-                        # cannot hang if processing raised.
-                        channel_queue.task_done()
-
-            # Start worker threads (4 workers for parallel processing)
-            num_workers = 4
-            workers = []
-            for _ in range(num_workers):
-                worker = threading.Thread(target=process_channel_worker, daemon=True)
-                worker.start()
-                workers.append(worker)
-
-            # Parse incrementally as chunks arrive
+            # Parsing state. current_extinf holds the most recent EXTINF
+            # metadata until its stream-URL line arrives.
             current_extinf = None
             lines_processed = 0
             last_progress_time = time.time()
 
-            def process_lines(text_chunk):
-                nonlocal line_buffer, current_extinf, lines_processed, bytes_downloaded, last_progress_time
+            def process_buffer(final: bool = False):
+                """Pull complete lines out of line_buffer and parse them inline."""
+                nonlocal line_buffer, current_extinf, lines_processed, last_progress_time
 
-                line_buffer += text_chunk
+                # On the final flush, append a newline so a trailing line with
+                # no line break still gets processed.
+                if final and line_buffer and not line_buffer.endswith('\n'):
+                    line_buffer += '\n'
 
                 # Process complete lines
                 while '\n' in line_buffer:
@@ -983,71 +987,50 @@ class DataLoader:
                     if line.startswith("#EXTINF:"):
                         current_extinf = self._parse_extinf(line)
 
-                    # Process stream URL
+                    # The line after an EXTINF is its stream URL
                     elif current_extinf and not line.startswith('#'):
-                        stream_url = line
-                        # Queue for parallel processing
-                        channel_queue.put((current_extinf, stream_url))
+                        self._add_channel_from_metadata(current_extinf, line, group_cache)
                         current_extinf = None
-                
+
                 # Report progress periodically (every 0.5 seconds)
                 current_time = time.time()
                 if current_time - last_progress_time >= 0.5:
                     self._report_progress(
-                        bytes_downloaded, 
+                        bytes_downloaded,
                         content_length,
                         f"Downloaded {bytes_downloaded / 1024 / 1024:.1f} MB, {len(self._channels)} channels..."
                     )
                     last_progress_time = current_time
 
-            # Process first chunk
-            process_lines("")
+            # Parse the first chunk already buffered, then stream the rest.
+            process_buffer()
 
-            # Stream remaining chunks
             chunk_size = 65536  # 64KB chunks for optimal performance
             for chunk in response.iter_content(chunk_size):
                 if chunk:
                     bytes_downloaded += len(chunk)
                     decoded_chunk = decoder.decode(chunk)
                     if decoded_chunk:
-                        process_lines(decoded_chunk)
+                        line_buffer += decoded_chunk
+                        process_buffer()
 
-            # Flush any bytes the incremental decoder held back at the end.
+            # Flush any bytes the incremental decoder held back, then any
+            # remaining buffered line.
             tail = decoder.decode(b'', final=True)
             if tail:
-                process_lines(tail)
-
-            # Process any remaining buffered data
-            if line_buffer.strip():
-                process_lines("\n")
-
-            # Wait for all queued items to be processed
-            self._report_progress(bytes_downloaded, content_length, "Finalizing...")
-            logger.debug("Waiting for worker threads to complete processing...")
-            channel_queue.join()
-
-            # Signal workers to stop
-            processing_complete.set()
-            for _ in range(num_workers):
-                channel_queue.put(None)  # Poison pill for each worker
-
-            # Wait for workers to finish
-            for worker in workers:
-                worker.join(timeout=5)
+                line_buffer += tail
+            process_buffer(final=True)
 
             elapsed_time = time.time() - start_time
             speed_mbps = (bytes_downloaded / 1024 / 1024) / elapsed_time if elapsed_time > 0 else 0
-
-            logger.info(f"✓ Optimized loading complete:")
-            logger.info(f"  - Downloaded: {bytes_downloaded / 1024 / 1024:.2f} MB")
-            logger.info(f"  - Time: {elapsed_time:.2f} seconds")
-            logger.info(f"  - Speed: {speed_mbps:.2f} MB/s")
-            logger.info(f"  - Lines processed: {lines_processed}")
-            logger.info(f"  - Channels loaded: {len(self._channels)}")
-            logger.info(f"  - Groups: {len(self._groups)}")
+            logger.info(
+                f"Streaming load complete: {len(self._channels)} channels in "
+                f"{len(self._groups)} groups, {bytes_downloaded / 1024 / 1024:.2f} MB "
+                f"in {elapsed_time:.2f}s ({speed_mbps:.2f} MB/s, {lines_processed} lines)"
+            )
 
             self._report_progress(
-                bytes_downloaded, 
+                bytes_downloaded,
                 bytes_downloaded,
                 f"Complete: {len(self._channels)} channels in {len(self._groups)} groups"
             )

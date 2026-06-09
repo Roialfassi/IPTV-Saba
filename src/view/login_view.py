@@ -3,7 +3,8 @@ import sys
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QListWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QCheckBox, QApplication, QScrollArea, QListWidgetItem,
-    QFrame, QGraphicsDropShadowEffect, QMessageBox, QDialog, QLineEdit, QSizePolicy
+    QFrame, QGraphicsDropShadowEffect, QMessageBox, QDialog, QLineEdit, QSizePolicy,
+    QMenu
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon
@@ -20,13 +21,21 @@ WINDOW_ICON_PATH = resource_path("Assets/iptv-logo2.ico")
 
 class CreateProfileDialog(QDialog):
     """
-    Dialog to create a new profile by entering name and URL.
+    Dialog to create or edit a profile by entering a name and URL.
     Enhanced with modern styling inspired by Netflix and Facebook.
+
+    Pass ``name``/``url`` to pre-fill the fields (used when editing), and
+    ``title``/``submit_text`` to relabel the dialog for the edit case.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, name: str = "", url: str = "",
+                 title: str = "Create New Profile", submit_text: str = "Create"):
         super().__init__(parent)
-        self.setWindowTitle("Create New Profile")
+        self._initial_name = name
+        self._initial_url = url
+        self._title = title
+        self._submit_text = submit_text
+        self.setWindowTitle(title)
         self.setWindowIcon(QIcon(WINDOW_ICON_PATH))
         self.setFixedSize(500, 300)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
@@ -40,7 +49,7 @@ class CreateProfileDialog(QDialog):
         main_layout.setContentsMargins(40, 20, 40, 20)
 
         # Header Label
-        header_label = QLabel("Create Your Profile")
+        header_label = QLabel(self._title)
         header_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
         header_label.setStyleSheet("color: #e50914;")
         header_label.setAlignment(Qt.AlignCenter)
@@ -48,6 +57,7 @@ class CreateProfileDialog(QDialog):
 
         # Profile Name Input
         self.name_input = QLineEdit()
+        self.name_input.setText(self._initial_name)
         self.name_input.setPlaceholderText("Enter Profile Name")
         self.name_input.setFont(QFont("Segoe UI", 12))
         self.name_input.setStyleSheet("""
@@ -66,6 +76,7 @@ class CreateProfileDialog(QDialog):
 
         # Profile URL Input
         self.url_input = QLineEdit()
+        self.url_input.setText(self._initial_url)
         self.url_input.setPlaceholderText("Enter Profile URL")
         self.url_input.setFont(QFont("Segoe UI", 12))
         self.url_input.setStyleSheet("""
@@ -86,8 +97,8 @@ class CreateProfileDialog(QDialog):
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(20)
 
-        # Create Button
-        self.create_button = QPushButton("Create")
+        # Create / Save Button
+        self.create_button = QPushButton(self._submit_text)
         self.create_button.setFont(QFont("Segoe UI", 12, QFont.Bold))
         self.create_button.setCursor(Qt.PointingHandCursor)
         self.create_button.setStyleSheet("""
@@ -273,6 +284,7 @@ class LoginScreen(QWidget):
         """)
         self.profiles_list.setFont(QFont("Segoe UI", 12))
         self.profiles_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.profiles_list.setToolTip("Double-click to log in. Right-click to edit or delete.")
         scroll_area.setWidget(self.profiles_list)
         card_layout.addWidget(scroll_area)
 
@@ -394,6 +406,12 @@ class LoginScreen(QWidget):
         self.easy_mode_button.clicked.connect(self.handle_easy_mode)
         self.create_profile_button.clicked.connect(self.open_create_profile_dialog)
 
+        # Profile list interactions: double-click to log in, right-click to
+        # edit/delete.
+        self.profiles_list.itemDoubleClicked.connect(self.handle_login)
+        self.profiles_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.profiles_list.customContextMenuRequested.connect(self._show_profile_context_menu)
+
         # Connect Controller signals to GUI slots
         self.controller.profiles_updated.connect(self.load_profiles)
         self.controller.error_occurred.connect(self.show_error)
@@ -468,6 +486,64 @@ class LoginScreen(QWidget):
                 self.controller.create_profile(name, url)
             except Exception as e:
                 logger.error(f"Error creating profile: {e}")
+
+    def _show_profile_context_menu(self, pos):
+        """
+        Show an Edit/Delete context menu for the profile under the cursor.
+
+        Args:
+            pos: Position of the right-click, in list-widget coordinates.
+        """
+        item = self.profiles_list.itemAt(pos)
+        if not item:
+            return
+        name = item.text()
+        menu = QMenu(self)
+        edit_action = menu.addAction("Edit Profile")
+        delete_action = menu.addAction("Delete Profile")
+        chosen = menu.exec_(self.profiles_list.viewport().mapToGlobal(pos))
+        if chosen == edit_action:
+            self._edit_profile(name)
+        elif chosen == delete_action:
+            self._delete_profile(name)
+
+    def _edit_profile(self, name: str):
+        """
+        Open a pre-filled dialog to edit the named profile's name/URL.
+
+        Args:
+            name (str): The current name of the profile to edit.
+        """
+        profile = self.controller.profile_manager.get_profile(name)
+        if not profile:
+            QMessageBox.critical(self, "Error", "Selected profile does not exist.")
+            return
+        dialog = CreateProfileDialog(self, name=profile.name, url=profile.url,
+                                     title="Edit Profile", submit_text="Save")
+        if dialog.exec_() == QDialog.Accepted:
+            new_name, new_url = dialog.get_inputs()
+            if not new_name:
+                QMessageBox.warning(self, "Missing Profile Name", "Please enter a name for the profile.")
+                return
+            if not new_url:
+                QMessageBox.warning(self, "Missing Profile URL", "Please enter the M3U playlist URL for the profile.")
+                return
+            self.controller.edit_profile(name, new_name, new_url)
+
+    def _delete_profile(self, name: str):
+        """
+        Confirm and delete the named profile.
+
+        Args:
+            name (str): The name of the profile to delete.
+        """
+        reply = QMessageBox.question(
+            self, "Delete Profile",
+            f"Delete profile '{name}'?\n\nThis also removes its favorites and history. "
+            "This action cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.controller.delete_profile(name)
 
     def show_error(self, message: str):
         """

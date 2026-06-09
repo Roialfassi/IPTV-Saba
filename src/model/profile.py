@@ -9,6 +9,7 @@ import requests
 # Configure logging
 from src.data.data_loader import DataLoader
 from src.model.channel_model import Channel
+from src.utils.url_utils import redact_url
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ class Profile:
             logger.debug(f"Updating profile name from '{self.name}' to '{name}'.")
             self.name = name
         if url:
-            logger.debug(f"Updating profile URL from '{self.url}' to '{url}'.")
+            logger.debug(f"Updating profile URL from '{redact_url(self.url)}' to '{redact_url(url)}'.")
             self.url = url
 
     def add_to_history(self, channel: Channel) -> None:
@@ -299,18 +300,18 @@ class Profile:
             bool: True if valid, False otherwise.
         """
         if not self._is_valid_url(self.url):
-            logger.error(f"Invalid profile URL format: {self.url}")
+            logger.error(f"Invalid profile URL format: {redact_url(self.url)}")
             return False
         try:
             response = requests.head(self.url, timeout=5)
             is_valid = response.status_code == 200
             if is_valid:
-                logger.debug(f"Profile URL is reachable: {self.url}")
+                logger.debug(f"Profile URL is reachable: {redact_url(self.url)}")
             else:
-                logger.error(f"Profile URL returned status code {response.status_code}: {self.url}")
+                logger.error(f"Profile URL returned status code {response.status_code}: {redact_url(self.url)}")
             return is_valid
         except requests.RequestException as e:
-            logger.error(f"Error validating profile URL '{self.url}': {e}")
+            logger.error(f"Error validating profile URL '{redact_url(self.url)}': {e}")
             return False
 
     @staticmethod
@@ -329,7 +330,7 @@ class Profile:
             r'(?:\S+)$'  # Non-whitespace characters till end
         )
         is_valid = re.match(regex, url) is not None
-        logger.debug(f"URL '{url}' validation result: {is_valid}")
+        logger.debug(f"URL '{redact_url(url)}' validation result: {is_valid}")
         return is_valid
 
     def update_favorites(self, data_loader: DataLoader):
@@ -367,7 +368,6 @@ class Profile:
         """
         try:
             channel_names = [channel.name for channel in self.favorites]
-            # logger.debug(f"Channels in group '{group.name}': {channel_names}")
             return channel_names
         except Exception as e:
             logger.error(e)
@@ -384,7 +384,6 @@ class Profile:
         """
         try:
             channel_names = [channel.name for channel in self.history]
-            # logger.debug(f"Channels in group '{group.name}': {channel_names}")
             return channel_names
         except Exception as e:
             logger.error(e)

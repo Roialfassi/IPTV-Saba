@@ -84,7 +84,6 @@ class Group:
             logger.warning(f"Channel '{channel.name}' already exists in group '{self.name}'.")
         else:
             self.channels.append(channel)
-            # logger.debug(f"Added channel '{channel.name}' to group '{self.name}'.")
 
     def remove_channel(self, channel: Channel) -> None:
         """

@@ -4,6 +4,8 @@ import re
 import requests
 import logging
 
+from src.utils.url_utils import redact_url
+
 # Logging is configured centrally in iptv_app.py; just get a module logger.
 logger = logging.getLogger(__name__)
 
@@ -173,7 +175,7 @@ class Channel:
         )
         is_valid = re.match(regex, url) is not None
         if not is_valid:
-            logger.debug(f"URL is invalid: {url}")
+            logger.debug(f"URL is invalid: {redact_url(url)}")
         return is_valid
 
     def __eq__(self, other: Any) -> bool:

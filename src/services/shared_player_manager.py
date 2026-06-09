@@ -15,6 +15,12 @@ from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QWidget
 import vlc
 
+from src.utils.vlc_helpers import (
+    vlc_instance_args,
+    safe_release_player,
+    safe_release_instance,
+)
+
 logger = logging.getLogger(__name__)
 
 # Import StreamHealthTracker (lazy to avoid circular imports)
@@ -141,11 +147,8 @@ class SharedPlayerManager(QObject):
         logger.info("SharedPlayerManager initialized with state machine and event callbacks")
     
     def _get_vlc_args(self) -> list:
-        """Get platform-specific VLC arguments."""
-        if sys.platform == "win32":
-            vlc_plugins_path = r'C:\Program Files\VideoLAN\VLC\plugins'
-            return ['--no-plugins-cache', f'--plugin-path={vlc_plugins_path}']
-        return []
+        """Get platform-specific VLC arguments (see src.utils.vlc_helpers)."""
+        return vlc_instance_args()
     
     @classmethod
     def get_instance(cls) -> 'SharedPlayerManager':
@@ -1055,12 +1058,10 @@ class SharedPlayerManager(QObject):
         """
         Clean up resources safely.
 
-        IMPORTANT: On Windows, VLC has threading issues that can cause crashes
-        when calling stop() followed by release(). We use a gentler approach:
-        1. Pause first (safe operation)
-        2. Detach from window
-        3. Set media to None to release internal resources
-        4. Only then call release() with proper delays
+        The Windows-safe teardown sequence (pause -> detach -> set_media(None)
+        -> release, skipping stop() on Windows) lives in
+        :func:`src.utils.vlc_helpers.safe_release_player` so it stays identical
+        across every component that owns a VLC player.
         """
         logger.info("Cleaning up SharedPlayerManager...")
 
@@ -1068,58 +1069,11 @@ class SharedPlayerManager(QObject):
         self._cancel_connection_timer()
         self._cancel_retry()
 
-        if self._player:
-            try:
-                # First, pause if playing (safer than stop on Windows)
-                if self._player.is_playing():
-                    self._player.set_pause(1)
-                    logger.info("Player paused")
+        safe_release_player(self._player)
+        self._player = None
 
-                # Detach from window before any cleanup
-                try:
-                    if sys.platform == "win32":
-                        self._player.set_hwnd(None)
-                    elif sys.platform.startswith('linux'):
-                        self._player.set_xwindow(0)
-                    elif sys.platform == "darwin":
-                        self._player.set_nsobject(0)
-                    logger.info("Player detached from window")
-                except Exception as e:
-                    logger.warning(f"Could not detach player from window: {e}")
-
-                # Set media to None to help release internal resources
-                try:
-                    self._player.set_media(None)
-                except Exception:
-                    pass
-
-                # On Windows, we skip stop() as it can crash
-                # The release() will handle cleanup
-                if sys.platform != "win32":
-                    try:
-                        self._player.stop()
-                    except Exception as e:
-                        logger.warning(f"Error stopping player: {e}")
-
-                # Release the player
-                try:
-                    self._player.release()
-                    logger.info("Player released")
-                except Exception as e:
-                    logger.error(f"Error releasing player: {e}")
-            except Exception as e:
-                logger.error(f"Error during player cleanup: {e}")
-            finally:
-                self._player = None
-
-        if self._vlc_instance:
-            try:
-                self._vlc_instance.release()
-                logger.info("VLC instance released")
-            except Exception as e:
-                logger.error(f"Error releasing VLC instance: {e}")
-            finally:
-                self._vlc_instance = None
+        safe_release_instance(self._vlc_instance)
+        self._vlc_instance = None
 
         self._embedded_frame = None
         self._fullscreen_frame = None

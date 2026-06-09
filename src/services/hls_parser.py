@@ -11,6 +11,8 @@ from typing import List, Optional
 from urllib.parse import urljoin
 import requests
 
+from src.utils.url_utils import redact_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,7 +104,7 @@ class HLSParser:
 
             # Check if this is a master playlist (contains #EXT-X-STREAM-INF)
             if '#EXT-X-STREAM-INF' not in content:
-                logger.debug(f"Not a master playlist (no variants): {url}")
+                logger.debug(f"Not a master playlist (no variants): {redact_url(url)}")
                 return variants
 
             # Parse each variant
@@ -115,7 +117,7 @@ class HLSParser:
             # Sort by bandwidth (highest first)
             variants.sort(key=lambda v: v.bandwidth, reverse=True)
 
-            logger.info(f"Parsed {len(variants)} quality variants from {url}")
+            logger.info(f"Parsed {len(variants)} quality variants from {redact_url(url)}")
 
         except requests.RequestException as e:
             logger.error(f"Failed to fetch HLS playlist: {e}")

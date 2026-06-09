@@ -100,6 +100,38 @@ class Controller(QObject):
             logger.error(f"Failed to create profile '{name}': {ve}")
             self.error_occurred.emit(str(ve))  # Emit error signal
 
+    @pyqtSlot(str, str, str)
+    def edit_profile(self, old_name: str, new_name: str, new_url: str) -> None:
+        """
+        Edit an existing profile's name and/or URL.
+
+        Keeps the active profile and the saved auto-login id in sync when the
+        edited profile is the current/last-used one, then notifies the UI.
+
+        Args:
+            old_name (str): Current name of the profile to edit.
+            new_name (str): New name for the profile.
+            new_url (str): New playlist URL for the profile.
+        """
+        try:
+            if not self.profile_manager.edit_profile(old_name, new_name, new_url):
+                self.error_occurred.emit(
+                    f"Could not edit profile '{old_name}'. The name may be taken or the URL invalid."
+                )
+                return
+
+            # Keep references to the renamed profile consistent.
+            if self.active_profile and self.active_profile.name == old_name:
+                self.active_profile = self.profile_manager.get_profile(new_name)
+            if self.config_manager.get_value("last_active_profile_id") == old_name:
+                self.config_manager.set_value("last_active_profile_id", new_name)
+
+            logger.info(f"Profile '{old_name}' edited (now '{new_name}').")
+            self.profiles_updated.emit()
+        except Exception as e:
+            logger.error(f"Failed to edit profile '{old_name}': {e}")
+            self.error_occurred.emit(str(e))
+
     @pyqtSlot(str)
     def delete_profile(self, name: str) -> None:
         """
@@ -222,8 +254,8 @@ class Controller(QObject):
             logger.debug(f"Channel '{channel.name}' not found in any group.")
             return
         self.active_profile.add_to_history(channel)
+        # update_profile() already persists profiles.json atomically.
         self.profile_manager.update_profile(self.active_profile)
-        self.profile_manager.export_profiles(self.profile_path)
 
     def add_to_favorites(self, channel_name: str) -> None:
         """
@@ -236,8 +268,8 @@ class Controller(QObject):
             logger.debug(f"Channel '{channel_name}' not found in any group.")
             return
         self.active_profile.add_to_favorites(channel)
+        # update_profile() already persists profiles.json atomically.
         self.profile_manager.update_profile(self.active_profile)
-        self.profile_manager.export_profiles(self.profile_path)
 
     def remove_from_favorites(self, channel_name: str) -> None:
         """
@@ -250,7 +282,7 @@ class Controller(QObject):
             logger.debug(f"Channel '{channel_name}' not found in any group.")
             return
         self.active_profile.remove_from_favorites(channel)
+        # update_profile() already persists profiles.json atomically.
         self.profile_manager.update_profile(self.active_profile)
-        self.profile_manager.export_profiles(self.profile_path)
 
 

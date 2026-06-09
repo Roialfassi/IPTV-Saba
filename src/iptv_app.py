@@ -34,6 +34,7 @@ from src.view.easy_mode_screen import EasyModeScreen
 from src.view.login_view import LoginScreen
 from src.view.choose_channel_screen import ChooseChannelScreen
 from src.services.shared_player_manager import SharedPlayerManager
+from src.utils.vlc_helpers import safe_release_player, safe_release_instance
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,10 @@ class IPTVApp:
         self.login_screen = None
         self.choose_channel_screen = None
         self.easy_mode_screen = None
-        # self.controller.error_occurred.connect(self.handle_error)
-        
+        # Note: controller.error_occurred is surfaced by the active screen
+        # (LoginScreen / ChooseChannelScreen connect it to a dialog), so there
+        # is no app-level handler here to avoid showing the same error twice.
+
         # Connect app aboutToQuit signal to cleanup shared player
         self.app.aboutToQuit.connect(self.cleanup)
 
@@ -73,30 +76,15 @@ class IPTVApp:
             except Exception as e:
                 logger.error(f"Error cleaning up ChooseChannelScreen: {e}")
 
-        # Cleanup EasyModeScreen VLC resources
+        # Cleanup EasyModeScreen VLC resources using the shared Windows-safe
+        # teardown. safe_release_*() are no-ops on None, so this is harmless
+        # even if EasyModeScreen.closeEvent already released them.
         if self.easy_mode_screen:
             try:
-                if hasattr(self.easy_mode_screen, 'player') and self.easy_mode_screen.player:
-                    # Pause first instead of stop to avoid Windows VLC crashes
-                    try:
-                        if self.easy_mode_screen.player.is_playing():
-                            self.easy_mode_screen.player.set_pause(1)
-                    except Exception:
-                        pass
-                    # Set media to None before release
-                    try:
-                        self.easy_mode_screen.player.set_media(None)
-                    except Exception:
-                        pass
-                    try:
-                        self.easy_mode_screen.player.release()
-                    except Exception as e:
-                        logger.warning(f"Error releasing EasyMode player: {e}")
-                if hasattr(self.easy_mode_screen, 'vlc_instance') and self.easy_mode_screen.vlc_instance:
-                    try:
-                        self.easy_mode_screen.vlc_instance.release()
-                    except Exception as e:
-                        logger.warning(f"Error releasing EasyMode VLC instance: {e}")
+                safe_release_player(getattr(self.easy_mode_screen, 'player', None))
+                self.easy_mode_screen.player = None
+                safe_release_instance(getattr(self.easy_mode_screen, 'vlc_instance', None))
+                self.easy_mode_screen.vlc_instance = None
                 logger.info("IPTVApp: EasyModeScreen cleanup complete")
             except Exception as e:
                 logger.error(f"Error cleaning up EasyModeScreen: {e}")
@@ -122,10 +110,9 @@ class IPTVApp:
         self.choose_channel_screen = ChooseChannelScreen(self.controller)
         self.choose_channel_screen.logout_signal.connect(self.logout_choose_channel_screen)
         self.choose_channel_screen.show()
-        # Saving profile after update
-        # self.controller.active_profile.update_last_loaded()
+        # Saving profile after update. update_profile() already persists every
+        # profile atomically to profiles.json; no separate export needed.
         self.controller.profile_manager.update_profile(self.controller.active_profile)
-        self.controller.profile_manager.export_profiles(self.controller.profile_path)
         if self.login_screen:
             self.login_screen.hide()
 
@@ -144,8 +131,8 @@ class IPTVApp:
     def handle_first_run(self):
         self.controller.config_manager.set_value("first_run", False)
         default_profile = create_mock_profile()
+        # create_profile() persists profiles.json on success; no export needed.
         self.controller.create_profile(default_profile.name, default_profile.url)
-        self.controller.profile_manager.export_profiles(self.controller.profile_path)
 
     def run(self):
         if self.controller.login_logic():

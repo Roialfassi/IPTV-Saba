@@ -23,6 +23,7 @@ from src.model.profile import create_mock_profile, Profile
 from src.view.full_screen_view import FullScreenView
 from src.services.download_record_manager import DownloadRecordManager
 from src.services.shared_player_manager import SharedPlayerManager, get_shared_player
+from src.services.stream_health_tracker import StreamHealthTracker
 from src.view.retry_overlay import RetryOverlay
 from src.view.schedule_dialog import ScheduleRecordingDialog
 from src.view.downloads_panel import DownloadsPanel
@@ -90,10 +91,11 @@ def _combo(tooltip, min_w=90):
 
 class LoaderWorker(QObject):
     finished = pyqtSignal()
-    data_loaded = pyqtSignal(object)
+    data_loaded = pyqtSignal(object)  # emits the LoadResult value (str)
     progress = pyqtSignal(int)
     progress_message = pyqtSignal(str)
-    error = pyqtSignal(str)
+    error = pyqtSignal(str)            # fatal: no data could be shown
+    notice = pyqtSignal(str, str)      # non-fatal (message, level) for a toast
 
     def __init__(self, controller: Controller):
         super().__init__()
@@ -122,7 +124,8 @@ class LoaderWorker(QObject):
 
             if result == LoadResult.CACHE_OFFLINE:
                 # Non-fatal: we have data to show, just couldn't reach the server.
-                self.error.emit("Network unavailable — showing the last saved playlist.")
+                # Surface as a toast rather than a blocking error dialog.
+                self.notice.emit("Network unavailable — showing the last saved playlist.", "warning")
 
             # Record a successful, server-validated load on the profile.
             # Only on a genuine download (LOADED) — not on cache-only paths —
@@ -132,10 +135,10 @@ class LoaderWorker(QObject):
                 self.controller.active_profile.update_favorites(self.loader)
                 self.controller.active_profile.update_history(self.loader)
                 self.controller.active_profile.update_last_loaded()
+                # update_profile() already persists profiles.json atomically.
                 self.controller.profile_manager.update_profile(self.controller.active_profile)
-                self.controller.profile_manager.export_profiles(self.controller.profile_path)
 
-            self.data_loaded.emit(None)  # Signal that loading is done
+            self.data_loaded.emit(result.value)  # Signal done; pass result kind
             self.progress_message.emit("Loading complete!")
             self.finished.emit()
         except Exception as e:
@@ -201,6 +204,64 @@ class LoadingOverlay(QWidget):
 
 
 # ============================================================
+#  Toast  – lightweight, non-modal status notification
+# ============================================================
+
+class Toast(QLabel):
+    """
+    A small, non-modal notification that floats over the main window and
+    auto-dismisses after a few seconds.
+
+    Used for transient, non-fatal messages (refresh status, offline-cache
+    notice, unreliable-channel warning) so the user is informed without a
+    blocking modal dialog. It is click-through (transparent for mouse events)
+    so it never gets in the way of the controls underneath.
+    """
+
+    # level -> (background, border) colors
+    _LEVEL_STYLES = {
+        "info":    ("#16263a", "#1877F2"),
+        "success": ("#16301d", "#3fa34d"),
+        "warning": ("#352a12", "#d9a441"),
+        "error":   ("#3a1717", "#E50914"),
+    }
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setVisible(False)
+        self.setWordWrap(True)
+        self.setAlignment(Qt.AlignCenter)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setMaximumWidth(560)
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self.hide)
+
+    def show_message(self, message: str, level: str = "info", duration_ms: int = 3500):
+        """Display ``message`` styled for ``level`` and auto-hide after the delay."""
+        bg, border = self._LEVEL_STYLES.get(level, self._LEVEL_STYLES["info"])
+        self.setStyleSheet(
+            f"background: {bg}; color: #FFFFFF; border: 1px solid {border};"
+            "border-radius: 8px; padding: 10px 16px; font-size: 13px;"
+        )
+        self.setText(message)
+        self.adjustSize()
+        self.reposition()
+        self.show()
+        self.raise_()
+        self._timer.start(duration_ms)
+
+    def reposition(self):
+        """Center the toast horizontally near the bottom of its parent."""
+        parent = self.parentWidget()
+        if not parent:
+            return
+        x = max(0, (parent.width() - self.width()) // 2)
+        y = max(0, parent.height() - self.height() - 28)
+        self.move(x, y)
+
+
+# ============================================================
 #  ChooseChannelScreen  – full rewrite of layout
 # ============================================================
 
@@ -220,6 +281,8 @@ class ChooseChannelScreen(QWidget):
         self.fullscreen_view = None
         self.thread = None
         self.worker = None
+        self._loading = False  # guards against overlapping playlist loads
+        self._refresh_requested = False  # True while a manual refresh is in flight
         self._badge_map = {}
 
         self._build_ui()
@@ -255,6 +318,10 @@ class ChooseChannelScreen(QWidget):
         self.retry_overlay = RetryOverlay(self)
         self.retry_overlay.cancel_button.clicked.connect(self._cancel_retry)
         self.retry_overlay.hide()
+
+        # Non-modal status notifications (refresh, offline cache, unreliable
+        # channel warnings, etc.)
+        self.toast = Toast(self)
 
         QTimer.singleShot(100, self.load_playlist_with_progress)
 
@@ -348,6 +415,11 @@ class ChooseChannelScreen(QWidget):
         self.now_playing_label = QLabel("")
         self.now_playing_label.setStyleSheet("font-size: 13px; color: #999; background: transparent;")
         hl.addWidget(self.now_playing_label, 1)
+
+        self.refresh_button = _icon_btn("Refresh", "Reload the playlist from its source",
+                                        bg="#333", hover="#444", pressed="#222",
+                                        fs=12, pad="5px 14px", mw=64, mh=26)
+        hl.addWidget(self.refresh_button)
 
         self.logout_button = _icon_btn("Logout", "Return to profile selection",
                                         bg="#333", hover="#444", pressed="#222",
@@ -526,6 +598,7 @@ class ChooseChannelScreen(QWidget):
         self.fullscreen_button.clicked.connect(self.toggle_fullscreen)
         self.volume_slider.valueChanged.connect(self.set_volume)
         self.record_download_button.clicked.connect(self._on_record_download_clicked)
+        self.refresh_button.clicked.connect(self.refresh_playlist)
         self.logout_button.clicked.connect(self.logout)
 
         # Track combos
@@ -698,8 +771,26 @@ class ChooseChannelScreen(QWidget):
     #  Playlist loading
     # ============================================================
 
+    def refresh_playlist(self):
+        """Manually reload the playlist from its source (header Refresh button).
+
+        Reuses the same background loader as startup. ``load_smart`` issues a
+        conditional GET, so an unchanged playlist is a cheap 304 (served from
+        cache) and a changed one is re-downloaded and re-parsed.
+        """
+        if self._loading:
+            return
+        self._refresh_requested = True
+        self.show_toast("Refreshing playlist...", level="info")
+        self.load_playlist_with_progress()
+
     def load_playlist_with_progress(self):
+        if self._loading:
+            logger.debug("Playlist load already in progress; ignoring request")
+            return
         try:
+            self._loading = True
+            self.refresh_button.setEnabled(False)
             self.loading_overlay.resize(self.size())
             self.loading_overlay.show()
             self.thread = QThread()
@@ -711,14 +802,18 @@ class ChooseChannelScreen(QWidget):
             self.thread.finished.connect(self.thread.deleteLater)
             self.thread.finished.connect(self.on_loading_finished)
             self.worker.error.connect(self.show_error)
+            self.worker.notice.connect(self.show_toast)
             self.worker.data_loaded.connect(self._on_data_loaded_from_worker)
             self.worker.progress_message.connect(self.loading_overlay.update_text)
             self.thread.start()
         except Exception as e:
             logger.error(f"Failed to start loading: {e}")
+            self._loading = False
+            self.refresh_button.setEnabled(True)
+            self.loading_overlay.hide()
             self.show_error(f"Failed to start loading: {str(e)}")
 
-    def _on_data_loaded_from_worker(self, _unused):
+    def _on_data_loaded_from_worker(self, result_value):
         try:
             loader = self.controller.data_loader
             logger.info(f"Data loaded: {len(loader._groups)} groups, {len(loader._channels)} channels")
@@ -731,11 +826,21 @@ class ChooseChannelScreen(QWidget):
             for ch in loader.channels:
                 if ch.channel_type:
                     self._badge_map[ch.name] = f"  [{ch.channel_type.upper()}]"
+
+            # Success feedback for a user-initiated refresh. Skip when we fell
+            # back to the offline cache — a warning toast already covers that.
+            if self._refresh_requested and result_value != LoadResult.CACHE_OFFLINE.value:
+                self.show_toast(
+                    f"Playlist updated — {len(loader.channels):,} channels", level="success"
+                )
         except Exception as e:
             logger.error(f"Error processing loaded data: {e}")
 
     def on_loading_finished(self):
         self.loading_overlay.hide()
+        self._loading = False
+        self._refresh_requested = False
+        self.refresh_button.setEnabled(True)
         self.load_groups()
 
     def _add_group_items(self, group_names):
@@ -791,6 +896,12 @@ class ChooseChannelScreen(QWidget):
                 self.active_channel = channel
                 self._update_record_download_button()
                 self.now_playing_label.setText(f"Now Playing: {channel.name}")
+                # Warn (non-blocking) if this channel has a poor reliability record.
+                if StreamHealthTracker.get_instance().is_problematic(channel.name):
+                    self.show_toast(
+                        f"⚠ '{channel.name}' has been unreliable recently",
+                        level="warning"
+                    )
             else:
                 QMessageBox.critical(self, "Stream Error", "Selected channel does not have a valid stream URL.")
 
@@ -1052,6 +1163,10 @@ class ChooseChannelScreen(QWidget):
     def show_error(self, message):
         QMessageBox.critical(self, "Error", message)
 
+    def show_toast(self, message: str, level: str = "info", duration_ms: int = 3500):
+        """Show a transient, non-blocking notification over the window."""
+        self.toast.show_message(message, level=level, duration_ms=duration_ms)
+
     # ============================================================
     #  Download / Record actions
     # ============================================================
@@ -1253,6 +1368,8 @@ class ChooseChannelScreen(QWidget):
         if self.retry_overlay.isVisible():
             self.retry_overlay.resize(self.video_frame.size())
             self.retry_overlay.move(self.video_frame.pos())
+        if self.toast.isVisible():
+            self.toast.reposition()
 
     def closeEvent(self, event):
         self._perform_full_cleanup()

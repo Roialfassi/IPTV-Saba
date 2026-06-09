@@ -165,6 +165,54 @@ class ProfileManager:
             logging.info(f"Profile '{updated_profile.name}' updated successfully.")
             return True
 
+    def edit_profile(self, old_name: str, new_name: str, new_url: str) -> bool:
+        """
+        Rename and/or change the URL of an existing profile in place.
+
+        Favorites and history are preserved (only ``name``/``url`` change). If
+        the name changes, the profile is re-keyed; the new name must not collide
+        with a different existing profile. Saves atomically and rolls back the
+        in-memory state if the write fails.
+
+        :param old_name: Current name of the profile to edit.
+        :param new_name: New name (may equal old_name to keep it).
+        :param new_url: New playlist URL.
+        :return: True if the edit succeeded, False otherwise.
+        """
+        with self.lock:
+            if old_name not in self.profiles_dict:
+                logging.error(f"Profile '{old_name}' does not exist.")
+                return False
+            if not self._validate_profile_data(new_name, new_url):
+                return False
+            if new_name != old_name and new_name in self.profiles_dict:
+                logging.error(f"Cannot rename to '{new_name}': a profile with that name already exists.")
+                return False
+
+            profile = self.profiles_dict[old_name]
+            idx = self.profiles_list.index(profile)
+            backup = profile.to_dict()
+
+            # Apply changes in place so favorites/history are retained.
+            profile.name = new_name
+            profile.url = new_url
+            if new_name != old_name:
+                del self.profiles_dict[old_name]
+            self.profiles_dict[new_name] = profile
+            self.profiles_list[idx] = profile
+
+            if not self.save_profiles():
+                # Roll back to the pre-edit state.
+                restored = Profile.from_dict(backup)
+                self.profiles_dict.pop(new_name, None)
+                self.profiles_dict[old_name] = restored
+                self.profiles_list[idx] = restored
+                logging.error(f"Failed to save edited profile '{old_name}'. Rolling back.")
+                return False
+
+            logging.info(f"Profile '{old_name}' edited successfully (now '{new_name}').")
+            return True
+
     def get_profile(self, name: str) -> Optional[Profile]:
         """
         Retrieve a profile by name.
