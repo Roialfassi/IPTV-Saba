@@ -2,6 +2,8 @@ name: Build and Release
 
 on:
   push:
+    branches:
+      - master
     tags:
       - 'v*'
   workflow_dispatch:
@@ -69,3 +71,44 @@ jobs:
             4. Run `IPTV-Saba.exe`.
 
             See the auto-generated changelog below for the full list of changes.
+
+      # --- Rolling "latest" build: runs on every push to master ---
+      # Replaces the single `latest` pre-release (and its tag) with the newest
+      # exe so users always have the most recent build without release spam.
+      - name: Remove previous 'latest' release and tag
+        if: github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "No existing 'latest' release to delete (this is fine)."
+          }
+          exit 0
+
+      - name: Update rolling 'latest' release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          target_commitish: ${{ github.sha }}
+          name: Latest build (master)
+          prerelease: true
+          make_latest: false
+          files: dist/IPTV-Saba.exe
+          body: |
+            ## IPTV-Saba — latest development build
+
+            Automated build from the most recent commit on `master`.
+            This is a rolling pre-release and is overwritten on every push.
+
+            - Commit: ${{ github.sha }}
+            - Built: ${{ github.event.head_commit.timestamp }}
+
+            ### Installation
+            1. Download `IPTV-Saba.exe` below.
+            2. Install [VLC Media Player](https://www.videolan.org/vlc/) — required at runtime.
+            3. (Optional) Install `ffmpeg` and add it to your PATH if you want scheduled recordings.
+            4. Run `IPTV-Saba.exe`.
+
+            > For stable, versioned releases see the tagged `v*` releases.
