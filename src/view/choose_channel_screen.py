@@ -695,11 +695,23 @@ class ChooseChannelScreen(QWidget):
         display_names = channel_names[:MAX_DISPLAY_CHANNELS]
         truncated = len(channel_names) > MAX_DISPLAY_CHANNELS
 
+        # Favorites/History may hold channels the current playlist no longer
+        # contains (kept on reload rather than dropped). Mark those. The "All"
+        # tab lists playlist channels only, so skip the lookup there.
+        check_availability = self.channel_tabs.currentIndex() in (1, 2)
+
         for name in display_names:
             prefix = "[F] " if name in fav_names else ""
             badge = self._badge_map.get(name, "")
-            item = QListWidgetItem(f"{prefix}{name}{badge}")
+            unavailable = (check_availability
+                           and self.controller.data_loader.get_channel_by_name(name) is None)
+            suffix = "  (unavailable)" if unavailable else ""
+            item = QListWidgetItem(f"{prefix}{name}{badge}{suffix}")
             item.setData(Qt.UserRole, name)
+            if unavailable:
+                item.setForeground(QColor("#666"))
+                item.setToolTip("Not in the current playlist — it may have been "
+                                "renamed or removed by your provider.")
             self.channel_list.addItem(item)
 
         if truncated:
@@ -890,7 +902,15 @@ class ChooseChannelScreen(QWidget):
         channel_name = self._get_selected_channel_name()
         if channel_name:
             channel = self.controller.find_channel_by_name(channel_name)
-            if channel and channel.stream_url:
+            if channel is None:
+                # Saved favorite/history entry missing from the current playlist.
+                self.show_toast(
+                    f"'{channel_name}' isn't in the current playlist — "
+                    f"it may have been renamed or removed.",
+                    level="warning"
+                )
+                return
+            if channel.stream_url:
                 self.play_channel_stream(channel)
                 self.add_to_history(channel)
                 self.active_channel = channel
@@ -929,8 +949,9 @@ class ChooseChannelScreen(QWidget):
             self.player.pause()
 
     def stop_channel(self):
-        if self.player:
-            self.player.stop()
+        # Raw player.stop() can crash VLC on Windows; the manager applies the
+        # safe sequence and keeps the view state machine in sync.
+        self.shared_player.stop()
 
     def toggle_fullscreen(self):
         if self.active_channel:
@@ -1351,13 +1372,6 @@ class ChooseChannelScreen(QWidget):
     # ============================================================
     #  Player attachment / events / cleanup
     # ============================================================
-
-    def attach_player_to_window(self):
-        if hasattr(self, 'shared_player') and self.shared_player and hasattr(self, 'video_frame'):
-            try:
-                self.shared_player.attach_to_frame(self.video_frame)
-            except Exception as e:
-                logger.error(f"Error attaching player: {e}")
 
     def showEvent(self, event):
         super().showEvent(event)

@@ -333,29 +333,40 @@ class Profile:
         logger.debug(f"URL '{redact_url(url)}' validation result: {is_valid}")
         return is_valid
 
-    def update_favorites(self, data_loader: DataLoader):
-        updated_favorites = []
-        for channel in self.favorites:
+    @staticmethod
+    def _rebind_channels(channels: List[Channel], data_loader: DataLoader, label: str) -> List[Channel]:
+        """
+        Re-bind saved channels to the freshly parsed Channel objects (by name)
+        so stream URLs track playlist changes.
+
+        Channels missing from the current playlist are KEPT as-is rather than
+        dropped: a provider may temporarily omit or rename a channel, and a
+        partial download must not silently wipe the user's saved list. The UI
+        marks such entries as unavailable (see ``DataLoader.get_channel_by_name``).
+        """
+        rebound = []
+        missing = 0
+        for channel in channels:
             updated_channel = data_loader.get_channel_by_name(channel.name)
             if updated_channel:
-                updated_favorites.append(updated_channel)
+                rebound.append(updated_channel)
                 if updated_channel != channel:
-                    logger.info(f"channel updated '{channel.name}' in the data.")
+                    logger.info(f"Channel '{channel.name}' updated in {label}.")
             else:
-                logger.info(f"Couldnt find '{channel.name}' in the Favorites.")
-        self.favorites = updated_favorites
+                rebound.append(channel)
+                missing += 1
+                logger.info(f"Channel '{channel.name}' in {label} not found in current playlist; keeping it.")
+        if missing:
+            logger.info(f"{missing} channel(s) in {label} are unavailable in the current playlist.")
+        return rebound
+
+    def update_favorites(self, data_loader: DataLoader):
+        # Build the new list first, then swap in one assignment so readers on
+        # the UI thread never see a partially rebuilt list.
+        self.favorites = self._rebind_channels(self.favorites, data_loader, "favorites")
 
     def update_history(self, data_loader: DataLoader):
-        updated_history = []
-        for channel in self.history:
-            updated_channel = data_loader.get_channel_by_name(channel.name)
-            if updated_channel:
-                updated_history.append(updated_channel)
-                if updated_channel != channel:
-                    logger.info(f"channel updated '{channel.name}' in the history.")
-            else:
-                logger.info(f"Couldnt find '{channel.name}' in the data.")
-        self.history = updated_history
+        self.history = self._rebind_channels(self.history, data_loader, "history")
 
     def list_channels_in_favorites(self) -> List[str]:
         """

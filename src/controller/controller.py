@@ -249,11 +249,11 @@ class Controller(QObject):
         :param channel:  channel
         :return:
         """
-        channel = self.find_channel_by_name(channel.name)
-        if not channel:
+        resolved = self.find_channel_by_name(channel.name)
+        if not resolved:
             logger.debug(f"Channel '{channel.name}' not found in any group.")
             return
-        self.active_profile.add_to_history(channel)
+        self.active_profile.add_to_history(resolved)
         # update_profile() already persists profiles.json atomically.
         self.profile_manager.update_profile(self.active_profile)
 
@@ -273,15 +273,18 @@ class Controller(QObject):
 
     def remove_from_favorites(self, channel_name: str) -> None:
         """
-        adds channel to favorites
+        removes channel from favorites
         :param channel_name: name of channel
         :return:
         """
-        channel = self.find_channel_by_name(channel_name)
-        if not channel:
-            logger.debug(f"Channel '{channel_name}' not found in any group.")
+        # Look up the saved entry on the profile, not the playlist: a favorite
+        # may no longer exist in the current playlist (unavailable) and must
+        # still be removable.
+        index = self.active_profile.is_in_favorites(channel_name)
+        if index == -1:
+            logger.debug(f"Channel '{channel_name}' is not in favorites.")
             return
-        self.active_profile.remove_from_favorites(channel)
+        self.active_profile.remove_from_favorites(self.active_profile.favorites[index])
         # update_profile() already persists profiles.json atomically.
         self.profile_manager.update_profile(self.active_profile)
 

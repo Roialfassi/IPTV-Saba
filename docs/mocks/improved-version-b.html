@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPTV-Saba — Concept B: Marquee (UI Mock)</title>
+<style>
+/* =========================================================================
+   DESIGN TOKENS — Concept B: "Marquee / Shelf"
+   Different bet than Concept A. Where the Tuner concept treats the app like
+   a cable-box control panel (dense left rail, LED digits, popovers), this
+   one treats it like a curated shelf of channels — top tab nav, a spotlight
+   "on now" hero, poster-style tiles, band "spines" you browse like a shelf
+   of tapes. Warm charcoal instead of blue-black; amber is the primary
+   interactive color, brand red is kept but demoted to a pure signal color
+   (LIVE / REC only) instead of the dominant chrome color.
+   ========================================================================= */
+:root{
+  --ink:#161310;
+  --surface-1:#1D1A15;
+  --surface-2:#26221B;
+  --surface-3:#332D22;
+  --surface-4:#403824;
+  --line:#3D3626;
+  --line-soft:#2A2519;
+  --text:#F5F0E4;
+  --text-dim:#B7AC97;
+  --text-dim2:#7A7160;
+  --amber:#E8A33D;
+  --amber-hover:#F5B75A;
+  --amber-press:#C6862A;
+  --red:#E50914;
+  --teal:#4FB8AE;
+  --font-serif:'Iowan Old Style','Palatino Linotype',Georgia,'Times New Roman',serif;
+  --font-body:'Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:'Cascadia Mono','Consolas','SFMono-Regular',Menlo,monospace;
+  --r-sm:6px; --r-md:12px; --r-lg:16px; --r-xl:20px; --r-pill:999px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.5);
+  --shadow-2:0 14px 34px rgba(0,0,0,.5);
+  --glow-amber:0 0 0 1px rgba(232,163,61,.4), 0 0 22px rgba(232,163,61,.22);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;background:#0c0a08;font-family:var(--font-body);}
+::selection{background:var(--amber);color:#1a1400;}
+button{font-family:inherit;}
+
+/* ---------- meta tool chrome ---------- */
+.tool-strip{position:sticky;top:0;z-index:200;background:#eeece4;color:#2a2a26;display:flex;align-items:center;gap:10px;padding:9px 16px;font-size:12.5px;border-bottom:1px solid #cfccc0;font-family:'Segoe UI',Arial,sans-serif;}
+.tool-strip b{font-weight:700;}
+.tool-strip .tag{background:var(--amber);color:#1a1400;font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:3px;text-transform:uppercase;}
+.tool-strip .spacer{flex:1;}
+.tool-strip nav{display:flex;gap:4px;flex-wrap:wrap;}
+.tool-strip nav button{background:transparent;border:1px solid #cfccc0;color:#2a2a26;padding:5px 10px;border-radius:5px;font-size:12px;cursor:pointer;}
+.tool-strip nav button.active{background:#2a2a26;color:#eeece4;border-color:#2a2a26;}
+.tool-strip a.swap{color:#2a2a26;font-size:12px;text-decoration:none;border-bottom:1px solid #2a2a26;white-space:nowrap;}
+
+/* ---------- fake desktop window ---------- */
+.window-wrap{padding:22px;display:flex;justify-content:center;background:#0c0a08;min-height:calc(100% - 48px);}
+.window{width:100%;max-width:1440px;background:#000;border-radius:10px;overflow:hidden;box-shadow:0 40px 90px rgba(0,0,0,.6);}
+.titlebar{height:30px;background:#14110d;display:flex;align-items:center;padding:0 0 0 10px;color:#847a68;font-size:12px;border-bottom:1px solid #000;}
+.titlebar .dot{width:8px;height:8px;border-radius:50%;background:var(--amber);margin-right:8px;box-shadow:0 0 6px rgba(232,163,61,.8);}
+.titlebar .tb-title{flex:1;letter-spacing:.02em;}
+.titlebar .tb-btn{width:44px;height:30px;display:flex;align-items:center;justify-content:center;color:#847a68;font-size:13px;}
+.titlebar .tb-btn:hover{background:#241f17;}
+.titlebar .tb-btn.close:hover{background:#E81123;color:#fff;}
+
+svg.i{width:18px;height:18px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;display:block;}
+
+.screen{display:none;background:var(--ink);color:var(--text);}
+.screen.active{display:block;}
+
+@keyframes rise{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.35;transform:scale(.7);}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+
+/* ---------- app shell : TOP TAB NAV instead of a rail ---------- */
+#screen-app.active{display:flex;flex-direction:column;height:750px;}
+.topnav{flex:0 0 auto;height:64px;display:flex;align-items:center;gap:30px;padding:0 30px;background:var(--surface-1);border-bottom:1px solid var(--line);}
+.brand{font-family:var(--font-serif);font-size:19px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:9px;letter-spacing:.01em;}
+.brand .mk{width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px rgba(232,163,61,.8);}
+.tabs{display:flex;gap:22px;height:100%;}
+.tabs button{background:transparent;border:none;color:var(--text-dim);font-size:13px;font-weight:600;padding:0;cursor:pointer;position:relative;height:100%;display:flex;align-items:center;}
+.tabs button.active{color:var(--text);}
+.tabs button.active::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--amber);border-radius:2px 2px 0 0;}
+.tabs button:hover{color:var(--text);}
+.topnav .fill{flex:1;}
+.np-chip{display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:5px 14px 5px 5px;cursor:pointer;}
+.np-chip .th{width:34px;height:34px;border-radius:50%;position:relative;overflow:hidden;flex:0 0 auto;}
+.np-chip .tx{font-size:12px;}
+.np-chip .tx .lv{font-size:9px;color:var(--red);font-weight:700;letter-spacing:.05em;display:flex;align-items:center;gap:4px;}
+.np-chip .tx .lv .dot{width:5px;height:5px;border-radius:50%;background:var(--red);animation:pulse 1.6s ease-in-out infinite;}
+.np-chip .tx .nm{font-weight:700;}
+.icon-only{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;color:var(--text-dim);cursor:pointer;}
+.icon-only:hover{background:var(--surface-2);color:var(--text);border-color:var(--line);}
+.av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-weight:700;font-size:12px;cursor:pointer;border:2px solid var(--surface-3);}
+
+.main{flex:1;overflow:auto;padding:30px 34px 40px;display:flex;flex-direction:column;gap:38px;}
+.main.no-pad{padding:0;overflow:hidden;}
+.view{display:none;flex-direction:column;gap:38px;animation:rise .35s ease both;}
+.view.active{display:flex;}
+#view-player.active{height:100%;}
+
+.row-head{display:flex;align-items:baseline;gap:10px;margin-bottom:15px;}
+.row-head .eyebrow{font-family:var(--font-serif);font-size:19px;font-weight:700;color:var(--text);}
+.row-head .count{font-family:var(--font-mono);font-size:11px;color:var(--text-dim2);}
+.row-head .fill{flex:1;}
+.row-head .link{font-size:12px;color:var(--text-dim);cursor:pointer;}
+.row-head .link:hover{color:var(--amber);}
+.hscroll{display:flex;gap:16px;overflow-x:auto;padding-bottom:8px;}
+.hscroll::-webkit-scrollbar{height:6px;}
+.hscroll::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:3px;}
+
+/* ---- palette washes (per-channel tint) ---- */
+.wash-1{background:linear-gradient(150deg,#4a2420,#1d100e);}
+.wash-2{background:linear-gradient(150deg,#22384a,#0e1620);}
+.wash-3{background:linear-gradient(150deg,#4a3416,#241a0a);}
+.wash-4{background:linear-gradient(150deg,#1f4630,#0c1c14);}
+.wash-5{background:linear-gradient(150deg,#3a2a4a,#181020);}
+.wash-6{background:linear-gradient(150deg,#1e4448,#0c1e20);}
+.wash-7{background:linear-gradient(150deg,#48283a,#20101a);}
+.wash-8{background:linear-gradient(150deg,#3a3630,#181614);}
+
+/* ---- hero spotlight ---- */
+.hero{position:relative;border-radius:var(--r-xl);overflow:hidden;min-height:230px;display:flex;align-items:flex-end;padding:30px 34px;}
+.hero .grain{position:absolute;inset:0;opacity:.12;background-image:repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px);}
+.hero-content{position:relative;max-width:560px;}
+.hero .eb{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--red);text-transform:uppercase;}
+.hero .eb .dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:pulse 1.6s ease-in-out infinite;}
+.hero h1{font-family:var(--font-serif);font-size:40px;font-weight:700;margin:8px 0 4px;line-height:1.05;}
+.hero .band{font-size:13px;color:var(--text-dim);margin-bottom:20px;}
+.hero .cta-row{display:flex;gap:12px;}
+.btn-amber{background:var(--amber);border:none;color:#1a1400;border-radius:var(--r-sm);padding:12px 22px;font-size:13.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;}
+.btn-amber:hover{background:var(--amber-hover);}
+.btn-ghost2{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:var(--text);border-radius:var(--r-sm);padding:12px 20px;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;}
+.btn-ghost2:hover{background:rgba(255,255,255,.11);}
+
+/* ---- poster card ---- */
+.poster{position:relative;border-radius:var(--r-md);overflow:hidden;cursor:pointer;transition:transform .18s ease;flex:0 0 auto;}
+.poster:hover{transform:translateY(-4px);}
+.poster .num{position:absolute;top:9px;left:9px;font-family:var(--font-serif);font-weight:700;font-size:15px;color:var(--text);background:rgba(10,8,6,.55);border-radius:6px;padding:2px 8px;}
+.poster .star{position:absolute;top:9px;right:9px;width:16px;height:16px;color:rgba(245,240,228,.5);}
+.poster .star.on{color:var(--amber);}
+.poster .scrim{position:absolute;left:0;right:0;bottom:0;padding:10px 10px 12px;background:linear-gradient(0deg,rgba(8,7,5,.92),transparent 85%);}
+.poster .nm{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.poster .lv{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:700;color:var(--red);letter-spacing:.04em;margin-top:3px;}
+.poster .lv .dot{width:5px;height:5px;border-radius:50%;background:var(--red);animation:pulse 1.6s ease-in-out infinite;}
+.poster.cw{width:150px;aspect-ratio:2/3;}
+.poster.cw .bar{position:absolute;left:10px;right:10px;bottom:8px;height:3px;background:rgba(255,255,255,.2);border-radius:2px;overflow:hidden;}
+.poster.cw .bar > div{height:100%;background:var(--amber);}
+.poster.now{box-shadow:var(--glow-amber);}
+
+/* ---- band spine shelf ---- */
+.spine{width:70px;height:180px;border-radius:var(--r-sm);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:16px 6px;cursor:pointer;flex:0 0 auto;transition:transform .18s ease;position:relative;overflow:hidden;}
+.spine:hover{transform:translateY(-4px);}
+.spine .grain{position:absolute;inset:0;opacity:.1;background-image:repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px);}
+.spine .lbl{writing-mode:vertical-rl;transform:rotate(180deg);font-family:var(--font-serif);font-size:14px;font-weight:700;letter-spacing:.03em;position:relative;}
+.spine .cnt{font-family:var(--font-mono);font-size:9px;color:rgba(245,240,228,.75);background:rgba(0,0,0,.35);border-radius:4px;padding:2px 5px;position:relative;}
+
+/* ---- filter row ---- */
+.filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.chip{background:var(--surface-2);border:1px solid var(--line);color:var(--text-dim);border-radius:var(--r-pill);padding:7px 14px;font-size:12.5px;cursor:pointer;white-space:nowrap;}
+.chip:hover{color:var(--text);border-color:var(--surface-4);}
+.chip.active{background:var(--amber);color:#1a1400;border-color:var(--amber);font-weight:700;}
+.filter-row .fill{flex:1;}
+.search-inline{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 13px;color:var(--text-dim);width:230px;}
+.search-inline input{background:transparent;border:none;outline:none;color:var(--text);font-size:12.5px;width:100%;font-family:inherit;}
+.search-inline svg{width:14px;height:14px;color:var(--text-dim2);flex:0 0 auto;}
+
+.poster-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:16px;}
+.poster-grid .poster{width:auto;aspect-ratio:2/3;}
+
+/* =========================== PLAYER =========================== */
+.theater{position:relative;height:100%;background:#000;overflow:hidden;}
+.theater .scan{position:absolute;inset:0;opacity:.25;background-image:repeating-linear-gradient(0deg,#141414 0 2px,#070707 2px 4px);}
+.theater .glow{position:absolute;inset:0;background:radial-gradient(circle at 50% 40%, rgba(232,163,61,.10), transparent 55%);}
+.theater .center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--text-dim2);}
+.theater .center .ring{width:76px;height:76px;border-radius:50%;border:2px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
+.theater .center .ring svg{width:26px;height:26px;color:var(--text-dim);}
+.theater .center .tag{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;}
+
+.theater-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;padding:20px 26px;background:linear-gradient(180deg,rgba(0,0,0,.72),transparent);}
+.theater-back{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;flex:0 0 auto;}
+.theater-back:hover{background:rgba(255,255,255,.12);}
+.theater-top .tt{font-family:var(--font-serif);font-size:21px;font-weight:700;}
+.theater-top .sub{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-dim);margin-top:1px;}
+.theater-top .sub .lv{display:flex;align-items:center;gap:5px;color:var(--red);font-weight:700;letter-spacing:.05em;font-size:10px;}
+.theater-top .sub .lv .dot{width:5px;height:5px;border-radius:50%;background:var(--red);animation:pulse 1.6s ease-in-out infinite;}
+
+.filmstrip{position:absolute;left:0;right:0;bottom:96px;padding:0 26px;display:flex;gap:10px;overflow-x:auto;}
+.film-item{flex:0 0 auto;width:92px;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;opacity:.72;border:2px solid transparent;}
+.film-item.now{opacity:1;border-color:var(--amber);}
+.film-item .fnum{position:absolute;top:5px;left:5px;font-family:var(--font-mono);font-size:9px;background:rgba(0,0,0,.5);border-radius:4px;padding:1px 4px;}
+.film-item .fname{padding:5px 6px 6px;font-size:9.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.film-item .fbox{height:52px;}
+
+.theater-bottom{position:absolute;left:0;right:0;bottom:0;padding:12px 26px 18px;background:linear-gradient(0deg,rgba(0,0,0,.88),rgba(0,0,0,.25) 75%,transparent);}
+.theater-controls{display:flex;align-items:center;gap:10px;}
+.round-btn{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;color:var(--text);cursor:pointer;}
+.round-btn:hover{background:rgba(255,255,255,.14);}
+.round-btn.solid{background:var(--amber);border-color:var(--amber);color:#1a1400;}
+.round-btn.solid:hover{background:var(--amber-hover);}
+.round-btn.rec{color:var(--red);}
+.round-btn.rec.active{background:rgba(229,9,20,.18);border-color:var(--red);}
+.onair-readout{font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim);}
+.onair-readout b{color:var(--red);}
+.theater-controls .fill{flex:1;}
+
+/* bottom sheet (tracks) */
+.sheet-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.5);display:none;z-index:29;}
+.sheet-backdrop.open{display:block;}
+.bottom-sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface-1);border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:10px 26px 24px;transform:translateY(100%);transition:transform .22s ease;z-index:30;}
+.bottom-sheet.open{transform:translateY(0);}
+.sheet-handle{width:36px;height:4px;background:var(--surface-4);border-radius:2px;margin:6px auto 16px;}
+.sheet-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+.sheet-grid .lbl{font-size:10px;color:var(--text-dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+select.sel{width:100%;background:var(--surface-3);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-size:12.5px;font-family:inherit;}
+
+/* =========================== RECORDINGS =========================== */
+.tabpills{display:flex;gap:8px;}
+.tabpill{background:var(--surface-2);border:1px solid var(--line);color:var(--text-dim);border-radius:var(--r-pill);padding:8px 16px;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:7px;}
+.tabpill .n{font-family:var(--font-mono);font-size:10.5px;background:var(--surface-3);border-radius:8px;padding:1px 6px;}
+.tabpill.active{background:var(--amber);color:#1a1400;border-color:var(--amber);font-weight:700;}
+.tabpill.active .n{background:rgba(0,0,0,.15);color:#1a1400;}
+.rec-tabview{display:none;flex-direction:column;gap:12px;}
+.rec-tabview.active{display:flex;}
+.rec-card{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;display:flex;align-items:center;gap:16px;}
+.rec-thumb{width:60px;height:60px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-weight:700;}
+.rec-thumb.status{background:var(--surface-3);}
+.rec-thumb.status svg{width:20px;height:20px;}
+.rec-body{flex:1;min-width:0;}
+.rec-top{display:flex;align-items:center;gap:8px;}
+.rec-name{font-size:13.5px;font-weight:700;}
+.type-chip{font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:4px;text-transform:uppercase;}
+.type-chip.rec{background:rgba(229,9,20,.16);color:var(--red);}
+.type-chip.dl{background:rgba(79,184,174,.16);color:var(--teal);}
+.rec-meta{display:flex;gap:12px;margin-top:6px;font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim2);}
+.rec-progress{height:6px;border-radius:3px;background:var(--surface-4);margin-top:9px;overflow:hidden;}
+.rec-progress > div{height:100%;background:var(--amber);}
+.rec-actions{display:flex;gap:8px;flex:0 0 auto;}
+.pill-btn2{background:var(--surface-3);border:1px solid var(--line);color:var(--text);border-radius:var(--r-sm);padding:7px 13px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.pill-btn2:hover{border-color:var(--surface-4);}
+.pill-btn2.danger{color:#ff9a8a;}
+.pill-btn2.amber{background:var(--amber);border-color:var(--amber);color:#1a1400;font-weight:700;}
+.pill-btn2.amber:hover{background:var(--amber-hover);}
+
+/* =========================== PROFILES =========================== */
+#screen-login.active{display:flex;align-items:center;justify-content:center;height:750px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% -10%, rgba(232,163,61,.14), transparent 55%), var(--ink);}
+#screen-login .grain{position:absolute;inset:0;opacity:.04;background-image:repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px);pointer-events:none;}
+.login-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:42px;padding:40px;}
+.login-brand{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.login-brand .word{font-family:var(--font-serif);font-size:30px;font-weight:700;letter-spacing:.01em;}
+.login-brand .word .mk{color:var(--amber);}
+.login-brand .sub{font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim2);letter-spacing:.1em;text-transform:uppercase;}
+
+.profile-grid{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;max-width:660px;}
+.profile-card{width:112px;display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;}
+.profile-card .cardface{width:112px;height:140px;border-radius:var(--r-lg);display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-size:30px;font-weight:700;border:2px solid transparent;position:relative;overflow:hidden;transition:transform .16s ease,border-color .16s ease;}
+.profile-card:hover .cardface{transform:translateY(-3px);}
+.profile-card.sel .cardface{border-color:var(--amber);box-shadow:var(--glow-amber);}
+.profile-card .nm{font-size:12.5px;color:var(--text-dim);}
+.profile-card.sel .nm{color:var(--text);font-weight:700;}
+.profile-card.add .cardface{background:var(--surface-2);border:2px dashed var(--line);color:var(--text-dim2);}
+.profile-card.add:hover .cardface{border-color:var(--text-dim);color:var(--text-dim);}
+
+.login-actions{display:flex;flex-direction:column;align-items:center;gap:20px;width:100%;max-width:600px;}
+.remember-row{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text-dim);}
+.switch{width:38px;height:22px;border-radius:12px;background:var(--amber);position:relative;cursor:pointer;}
+.switch::after{content:"";position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:#1a1400;}
+.login-cta-row{display:flex;gap:16px;width:100%;align-items:stretch;}
+.btn-primary-lg{flex:1;background:var(--amber);border:none;color:#1a1400;border-radius:var(--r-md);padding:16px 20px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;}
+.btn-primary-lg:hover{background:var(--amber-hover);}
+.easy-cta{flex:1.3;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;text-align:left;}
+.easy-cta:hover{border-color:var(--teal);}
+.easy-cta .ic{width:44px;height:44px;border-radius:var(--r-sm);background:rgba(79,184,174,.14);display:flex;align-items:center;justify-content:center;color:var(--teal);flex:0 0 auto;}
+.easy-cta .t{font-size:13.5px;font-weight:700;}
+.easy-cta .d{font-size:11px;color:var(--text-dim2);margin-top:2px;}
+.manage-link{font-size:11.5px;color:var(--text-dim2);cursor:pointer;}
+.manage-link:hover{color:var(--text-dim);}
+
+/* =========================== EASY MODE =========================== */
+#screen-easymode.active{display:flex;flex-direction:column;height:750px;background:var(--ink);position:relative;padding:26px 32px;gap:22px;}
+.easy-topbar{display:flex;align-items:center;justify-content:space-between;}
+.easy-clock{font-family:var(--font-mono);font-size:20px;color:var(--text-dim);letter-spacing:.03em;}
+.easy-exit{background:var(--surface-2);border:1px solid var(--line);color:var(--text-dim);border-radius:var(--r-pill);padding:8px 16px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.easy-exit:hover{color:#fff;border-color:var(--red);}
+.easy-now{text-align:center;}
+.easy-now .eb{display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;letter-spacing:.1em;color:var(--red);font-weight:800;text-transform:uppercase;}
+.easy-now .eb .dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:pulse 1.6s ease-in-out infinite;}
+.easy-now .nm{font-family:var(--font-serif);font-size:38px;font-weight:700;margin-top:6px;}
+.easy-now .band{font-size:13px;color:var(--text-dim);margin-top:4px;}
+.easy-grid{flex:1;display:grid;grid-template-columns:repeat(5,1fr);gap:20px;align-content:center;}
+.easy-tile{border-radius:var(--r-lg);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:0;cursor:pointer;position:relative;overflow:hidden;border:2px solid transparent;min-height:180px;}
+.easy-tile .grain{position:absolute;inset:0;opacity:.1;background-image:repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px);}
+.easy-tile .num{position:absolute;top:10px;left:10px;font-family:var(--font-serif);font-weight:700;font-size:15px;background:rgba(0,0,0,.4);border-radius:6px;padding:2px 8px;}
+.easy-tile .nm{position:relative;font-size:14px;font-weight:700;padding:12px 10px 14px;text-align:center;background:linear-gradient(0deg,rgba(8,7,5,.85),transparent);width:100%;}
+.easy-tile.now{border-color:var(--amber);box-shadow:var(--glow-amber);}
+.easy-tile.now .tag{position:absolute;top:10px;right:10px;background:var(--amber);color:#1a1400;font-size:9px;font-weight:800;letter-spacing:.04em;padding:2px 7px;border-radius:4px;}
+.easy-bottom{display:flex;align-items:center;gap:20px;}
+.easy-nav-btn{width:72px;height:72px;border-radius:50%;background:var(--surface-2);border:2px solid var(--line);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;}
+.easy-nav-btn:hover{border-color:var(--amber);color:var(--amber);}
+.easy-nav-btn svg{width:28px;height:28px;}
+.easy-vol{flex:1;display:flex;align-items:center;gap:16px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 22px;}
+.easy-vol-btn{width:50px;height:50px;border-radius:50%;background:var(--surface-3);border:none;color:#fff;font-size:22px;font-weight:700;cursor:pointer;flex:0 0 auto;}
+.easy-vol-btn:hover{background:var(--surface-4);}
+.easy-vol-track{flex:1;height:10px;border-radius:5px;background:var(--surface-4);overflow:hidden;}
+.easy-vol-track > div{height:100%;background:var(--amber);width:55%;}
+.easy-vol-pct{font-family:var(--font-mono);font-size:15px;font-weight:700;width:52px;text-align:center;}
+
+button:focus-visible, .chip:focus-visible, .tabs button:focus-visible, [tabindex]:focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+</style>
+</head>
+<body>
+
+<div class="tool-strip">
+  <b>IPTV-Saba UI Mocks</b><span class="tag">Concept B · Marquee</span>
+  <nav id="nav">
+    <button data-target="screen-app" data-view="view-home" class="active">Home</button>
+    <button data-target="screen-app" data-view="view-live">Live Channels</button>
+    <button data-target="screen-app" data-view="view-player">Player</button>
+    <button data-target="screen-app" data-view="view-recordings">Recordings</button>
+    <button data-target="screen-login">Profiles</button>
+    <button data-target="screen-easymode">Easy Mode</button>
+  </nav>
+  <div class="spacer"></div>
+  <a class="swap" href="current-state.html">← Current App</a>
+  <a class="swap" href="improved-version.html">← Concept A · Tuner</a>
+</div>
+
+<div class="window-wrap">
+<div class="window">
+  <div class="titlebar">
+    <span class="dot"></span><span class="tb-title">IPTV Saba</span>
+    <span class="tb-btn">–</span><span class="tb-btn">□</span><span class="tb-btn close">×</span>
+  </div>
+
+  <!-- ======================= APP SHELL ======================= -->
+  <div class="screen active" id="screen-app">
+    <div class="topnav">
+      <div class="brand"><span class="mk"></span>IPTV Saba</div>
+      <div class="tabs">
+        <button class="active" data-view="view-home">Home</button>
+        <button data-view="view-live">Live TV</button>
+        <button data-view="view-player">Player</button>
+        <button data-view="view-recordings">Recordings</button>
+      </div>
+      <div class="fill"></div>
+      <div class="np-chip" id="npChip" title="Now playing — jump to Player">
+        <div class="th wash-1"></div>
+        <div class="tx"><div class="lv"><span class="dot"></span>LIVE</div><div class="nm">Pulse Sports HD</div></div>
+      </div>
+      <div class="icon-only" title="Search"><svg class="i" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6.5"/><line x1="15" y1="15" x2="20.5" y2="20.5"/></svg></div>
+      <div class="icon-only" title="Settings"><svg class="i" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2"/><line x1="4" y1="14" x2="20" y2="14"/><circle cx="16" cy="14" r="2"/><line x1="4" y1="20" x2="20" y2="20"/><circle cx="11" cy="20" r="2"/></svg></div>
+      <div class="av wash-2">LR</div>
+    </div>
+
+    <div class="main" id="main-area">
+
+      <!-- ---------------- HOME ---------------- -->
+      <div class="view active" id="view-home">
+        <div class="hero wash-1">
+          <div class="grain"></div>
+          <div class="hero-content">
+            <div class="eb"><span class="dot"></span>On Now</div>
+            <h1>Pulse Sports HD</h1>
+            <div class="band">Sports · Channel 042 · 1080p</div>
+            <div class="cta-row">
+              <button class="btn-amber"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px;"><polygon points="7 4 20 12 7 20"/></svg>Watch Now</button>
+              <button class="btn-ghost2"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px;"><polygon points="12 2 15 9 22 9 16.5 13.5 18.5 21 12 17 5.5 21 7.5 13.5 2 9 9 9"/></svg>Add to Favorites</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row-head"><span class="eyebrow">Continue Watching</span><span class="count">4</span></div>
+          <div class="hscroll">
+            <div class="poster cw wash-1"><span class="num">01</span><svg class="i star on" viewBox="0 0 24 24" style="position:absolute;top:9px;right:9px;fill:currentColor;"><polygon points="12 2 15 9 22 9 16.5 13.5 18.5 21 12 17 5.5 21 7.5 13.5 2 9 9 9"/></svg><div class="scrim"><div class="nm">Northwind News</div><div class="lv"><span class="dot"></span>LIVE</div></div></div>
+            <div class="poster cw wash-3"><span class="num">14</span><div class="scrim"><div class="nm">Starlight Movies</div><div class="bar"><div style="width:64%"></div></div></div></div>
+            <div class="poster cw wash-4"><span class="num">31</span><div class="scrim"><div class="nm">Kids Orbit</div><div class="lv"><span class="dot"></span>LIVE</div></div></div>
+            <div class="poster cw wash-2"><span class="num">46</span><div class="scrim"><div class="nm">Goal Network</div><div class="lv"><span class="dot"></span>LIVE</div></div></div>
+            <div class="poster cw wash-6"><span class="num">58</span><div class="scrim"><div class="nm">Doc Vault</div></div></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row-head"><span class="eyebrow">Favorites</span><span class="count">7</span><div class="fill"></div><span class="link" data-jump="view-live">Manage →</span></div>
+          <div class="hscroll">
+            <div class="poster cw wash-1 now"><span class="num">42</span><div class="scrim"><div class="nm">Pulse Sports HD</div><div class="lv"><span class="dot"></span>LIVE</div></div></div>
+            <div class="poster cw wash-2"><span class="num">44</span><div class="scrim"><div class="nm">Arena Live</div><div class="lv"><span class="dot"></span>LIVE</div></div></div>
+            <div class="poster cw wash-5"><span class="num">67</span><div class="scrim"><div class="nm">Cinema One</div></div></div>
+            <div class="poster cw wash-3"><span class="num">88</span><div class="scrim"><div class="nm">Groove Music</div><div class="lv"><span class="dot"></span>LIVE</div></div></div>
+            <div class="poster cw wash-6"><span class="num">21</span><div class="scrim"><div class="nm">Local 7</div><div class="lv"><span class="dot"></span>LIVE</div></div></div>
+            <div class="poster cw wash-4"><span class="num">73</span><div class="scrim"><div class="nm">Family Hub</div></div></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row-head"><span class="eyebrow">Browse the Shelf</span><span class="count">10 bands</span></div>
+          <div class="hscroll">
+            <div class="spine wash-1"><div class="grain"></div><span class="lbl">Sports</span><span class="cnt">214</span></div>
+            <div class="spine wash-2"><div class="grain"></div><span class="lbl">News</span><span class="cnt">98</span></div>
+            <div class="spine wash-5"><div class="grain"></div><span class="lbl">Movies</span><span class="cnt">156</span></div>
+            <div class="spine wash-4"><div class="grain"></div><span class="lbl">Kids</span><span class="cnt">42</span></div>
+            <div class="spine wash-6"><div class="grain"></div><span class="lbl">Documentary</span><span class="cnt">67</span></div>
+            <div class="spine wash-3"><div class="grain"></div><span class="lbl">Music</span><span class="cnt">35</span></div>
+            <div class="spine wash-7"><div class="grain"></div><span class="lbl">Entertainment</span><span class="cnt">88</span></div>
+            <div class="spine wash-8"><div class="grain"></div><span class="lbl">International</span><span class="cnt">129</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------------- LIVE CHANNELS ---------------- -->
+      <div class="view" id="view-live">
+        <div class="filter-row">
+          <div class="chip active">All Bands</div>
+          <div class="chip">Sports</div>
+          <div class="chip">News</div>
+          <div class="chip">Movies</div>
+          <div class="chip">Kids</div>
+          <div class="chip">Documentary</div>
+          <div class="fill"></div>
+          <div class="search-inline"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6.5"/><line x1="15" y1="15" x2="20.5" y2="20.5"/></svg><input placeholder="Filter this shelf..."></div>
+        </div>
+        <div>
+          <div class="row-head"><span class="eyebrow">Sports</span><span class="count">214 channels</span></div>
+          <div class="poster-grid" id="live-grid"></div>
+        </div>
+      </div>
+
+      <!-- ---------------- RECORDINGS ---------------- -->
+      <div class="view" id="view-recordings">
+        <div class="row-head">
+          <span class="eyebrow">Recordings &amp; Downloads</span>
+          <div class="fill"></div>
+          <button class="pill-btn2 amber"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Schedule Recording</button>
+        </div>
+        <div class="tabpills">
+          <div class="tabpill active" data-rectab="rec-active">Active<span class="n">2</span></div>
+          <div class="tabpill" data-rectab="rec-scheduled">Scheduled<span class="n">1</span></div>
+          <div class="tabpill" data-rectab="rec-completed">Completed<span class="n">4</span></div>
+        </div>
+
+        <div class="rec-tabview active" id="rec-active">
+          <div class="rec-card">
+            <div class="rec-thumb wash-3">SM</div>
+            <div class="rec-body">
+              <div class="rec-top"><span class="rec-name">Starlight Movies — Friday Feature</span><span class="type-chip dl">Download</span></div>
+              <div class="rec-meta"><span>742.1 MB / 1.18 GB</span><span>4.2 MB/s</span><span>ETA 1m 44s</span></div>
+              <div class="rec-progress"><div style="width:63%"></div></div>
+            </div>
+            <div class="rec-actions"><button class="pill-btn2">Pause</button><button class="pill-btn2 danger">Cancel</button></div>
+          </div>
+          <div class="rec-card">
+            <div class="rec-thumb wash-2">NN</div>
+            <div class="rec-body">
+              <div class="rec-top"><span class="rec-name">Northwind News — Evening Bulletin</span><span class="type-chip rec">Recording</span></div>
+              <div class="rec-meta"><span style="color:var(--red);font-weight:700;">● REC</span><span>00:14:22 elapsed</span></div>
+            </div>
+            <div class="rec-actions"><button class="pill-btn2 danger">Stop</button></div>
+          </div>
+        </div>
+
+        <div class="rec-tabview" id="rec-scheduled">
+          <div class="rec-card">
+            <div class="rec-thumb status"><svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><line x1="3.5" y1="10" x2="20.5" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg></div>
+            <div class="rec-body"><div class="rec-top"><span class="rec-name">Arena Live — Derby Night</span></div><div class="rec-meta"><span>Sat, 20:30 → 22:45</span><span>Sports</span></div></div>
+            <div class="rec-actions"><button class="pill-btn2 danger">Cancel</button></div>
+          </div>
+        </div>
+
+        <div class="rec-tabview" id="rec-completed">
+          <div class="rec-card"><div class="rec-thumb status" style="color:#4CAF50;"><svg class="i" viewBox="0 0 24 24"><polyline points="4 13 9 18 20 6"/></svg></div><div class="rec-body"><div class="rec-top"><span class="rec-name">Doc Vault — Deep Ocean</span></div><div class="rec-meta"><span>Recording</span><span>1.4 GB</span><span>19:04</span></div></div><div class="rec-actions"><button class="pill-btn2">Open Folder</button></div></div>
+          <div class="rec-card"><div class="rec-thumb status" style="color:#4CAF50;"><svg class="i" viewBox="0 0 24 24"><polyline points="4 13 9 18 20 6"/></svg></div><div class="rec-body"><div class="rec-top"><span class="rec-name">Cinema One — Late Show</span></div><div class="rec-meta"><span>Download</span><span>2.1 GB</span><span>Yesterday</span></div></div><div class="rec-actions"><button class="pill-btn2">Open Folder</button></div></div>
+          <div class="rec-card"><div class="rec-thumb status" style="color:var(--red);"><svg class="i" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></div><div class="rec-body"><div class="rec-top"><span class="rec-name">Goal Network Extra</span></div><div class="rec-meta"><span>Recording failed</span><span>Connection timeout</span></div></div><div class="rec-actions"><button class="pill-btn2">Retry</button></div></div>
+          <div class="rec-card"><div class="rec-thumb status" style="color:#4CAF50;"><svg class="i" viewBox="0 0 24 24"><polyline points="4 13 9 18 20 6"/></svg></div><div class="rec-body"><div class="rec-top"><span class="rec-name">Groove Music — Session 12</span></div><div class="rec-meta"><span>Recording</span><span>640 MB</span><span>2 days ago</span></div></div><div class="rec-actions"><button class="pill-btn2">Open Folder</button></div></div>
+        </div>
+      </div>
+
+      <!-- ---------------- PLAYER ---------------- -->
+      <div class="view" id="view-player">
+        <div class="theater">
+          <div class="scan"></div><div class="glow"></div>
+          <div class="center">
+            <div class="ring"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 20 12 7 20"/></svg></div>
+            <div class="tag">PULSE SPORTS HD · 1080p</div>
+          </div>
+
+          <div class="theater-top">
+            <div class="theater-back"><svg class="i" viewBox="0 0 24 24"><polyline points="15 5 8 12 15 19"/></svg></div>
+            <div>
+              <div class="tt">Pulse Sports HD</div>
+              <div class="sub"><span class="lv"><span class="dot"></span>LIVE</span><span>Sports · Ch. 042</span></div>
+            </div>
+            <div class="fill" style="flex:1;"></div>
+            <div class="round-btn rec active" title="Recording"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px;"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg></div>
+          </div>
+
+          <div class="filmstrip">
+            <div class="film-item now"><div class="fbox wash-1"><span class="fnum">042</span></div><div class="fname">Pulse Sports HD</div></div>
+            <div class="film-item"><div class="fbox wash-1"><span class="fnum">043</span></div><div class="fname">Pulse Sports 2</div></div>
+            <div class="film-item"><div class="fbox wash-2"><span class="fnum">044</span></div><div class="fname">Arena Live</div></div>
+            <div class="film-item"><div class="fbox wash-2"><span class="fnum">045</span></div><div class="fname">Arena Live 2</div></div>
+            <div class="film-item"><div class="fbox wash-4"><span class="fnum">046</span></div><div class="fname">Goal Network</div></div>
+            <div class="film-item"><div class="fbox wash-6"><span class="fnum">047</span></div><div class="fname">Court Side</div></div>
+            <div class="film-item"><div class="fbox wash-3"><span class="fnum">048</span></div><div class="fname">Trackside</div></div>
+          </div>
+
+          <div class="theater-bottom">
+            <div class="theater-controls">
+              <div class="round-btn solid" title="Pause"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></div>
+              <div class="round-btn" title="Stop"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px;"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></div>
+              <div class="onair-readout"><b>● ON AIR</b>&nbsp;00:24:10</div>
+              <div class="fill"></div>
+              <div class="round-btn" title="Volume"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px;"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 8a5 5 0 0 1 0 8"/></svg></div>
+              <div class="round-btn" id="moreBtn" title="Audio, subtitles, quality"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px;"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></div>
+              <div class="round-btn" title="Fullscreen"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px;"><polyline points="4 9 4 4 9 4"/><polyline points="15 4 20 4 20 9"/><polyline points="20 15 20 20 15 20"/><polyline points="9 20 4 20 4 15"/></svg></div>
+            </div>
+          </div>
+
+          <div class="sheet-backdrop" id="sheetBackdrop"></div>
+          <div class="bottom-sheet" id="trackSheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-grid">
+              <div><div class="lbl">Audio</div><select class="sel"><option>Track 1 (eng)</option><option>Track 2 (original)</option></select></div>
+              <div><div class="lbl">Subtitles</div><select class="sel"><option>None</option><option>Load external file…</option></select></div>
+              <div><div class="lbl">Quality</div><select class="sel"><option>Auto</option><option>1080p</option><option>720p</option></select></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div>
+
+  <!-- ======================= PROFILES ======================= -->
+  <div class="screen" id="screen-login">
+    <div class="grain"></div>
+    <div class="login-wrap">
+      <div class="login-brand">
+        <div class="word">IPTV <span class="mk">Saba</span></div>
+        <div class="sub">Pick a profile from the shelf</div>
+      </div>
+
+      <div class="profile-grid">
+        <div class="profile-card sel"><div class="cardface wash-1">LR</div><div class="nm">Living Room</div></div>
+        <div class="profile-card"><div class="cardface wash-2">RA</div><div class="nm">Roi</div></div>
+        <div class="profile-card"><div class="cardface wash-4">KD</div><div class="nm">Kids</div></div>
+        <div class="profile-card"><div class="cardface wash-8">GU</div><div class="nm">Guest</div></div>
+        <div class="profile-card add"><div class="cardface"><svg class="i" viewBox="0 0 24 24" style="width:24px;height:24px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div><div class="nm">Add Profile</div></div>
+      </div>
+
+      <div class="login-actions">
+        <div class="remember-row"><div class="switch"></div> Remember Living Room on this device</div>
+        <div class="login-cta-row">
+          <button class="btn-primary-lg"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px;"><polygon points="7 4 20 12 7 20"/></svg>Watch Live TV</button>
+          <button class="easy-cta">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="20" rx="4"/><circle cx="12" cy="7" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="17" r="1.3"/></svg></div>
+            <div><div class="t">Simple Remote Mode</div><div class="d">Big buttons, made for the living room</div></div>
+          </button>
+        </div>
+        <div class="manage-link">Manage profiles</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= EASY MODE ======================= -->
+  <div class="screen" id="screen-easymode">
+    <div class="easy-topbar">
+      <div class="easy-clock">20:14</div>
+      <div class="easy-exit"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 5 8 12 15 19"/></svg>Exit</div>
+    </div>
+    <div class="easy-now">
+      <div class="eb"><span class="dot"></span>Now Watching</div>
+      <div class="nm">Pulse Sports HD</div>
+      <div class="band">Sports · Channel 1 of 6 favorites</div>
+    </div>
+    <div class="easy-grid">
+      <div class="easy-tile now wash-1"><div class="grain"></div><span class="num">42</span><span class="tag">ON AIR</span><div class="nm">Pulse Sports HD</div></div>
+      <div class="easy-tile wash-2"><div class="grain"></div><span class="num">44</span><div class="nm">Arena Live</div></div>
+      <div class="easy-tile wash-5"><div class="grain"></div><span class="num">67</span><div class="nm">Cinema One</div></div>
+      <div class="easy-tile wash-3"><div class="grain"></div><span class="num">88</span><div class="nm">Groove Music</div></div>
+      <div class="easy-tile wash-6"><div class="grain"></div><span class="num">21</span><div class="nm">Local 7</div></div>
+    </div>
+    <div class="easy-bottom">
+      <button class="easy-nav-btn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 5 8 12 15 19"/></svg></button>
+      <div class="easy-vol">
+        <button class="easy-vol-btn">−</button>
+        <div class="easy-vol-track"><div></div></div>
+        <div class="easy-vol-pct">55%</div>
+        <button class="easy-vol-btn">+</button>
+      </div>
+      <button class="easy-nav-btn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg></button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+(function(){
+  var CHANNELS = [
+    ["042","Pulse Sports HD","wash-1",true,"live",true],
+    ["043","Pulse Sports 2","wash-1",false,"live",false],
+    ["044","Arena Live","wash-2",true,"live",false],
+    ["045","Arena Live 2","wash-2",false,"live",false],
+    ["046","Goal Network","wash-4",false,"live",false],
+    ["049","Goal Network Extra","wash-4",false,"live",false],
+    ["047","Court Side","wash-6",false,"live",false],
+    ["048","Trackside","wash-3",false,"live",false],
+    ["051","Ring Center","wash-5",false,"live",false],
+    ["052","Matchday One","wash-7",false,"live",false],
+    ["053","Matchday Two","wash-7",false,"live",false],
+    ["054","Full Throttle","wash-8",false,"live",false],
+    ["055","Baseline Sports","wash-2",false,"live",false],
+    ["056","Summit Outdoors","wash-6",false,"vod",false],
+    ["057","Cinema Xtra","wash-5",false,"vod",false],
+    ["058","Sports Encore","wash-1",false,"series",false]
+  ];
+  var grid = document.getElementById('live-grid');
+  CHANNELS.forEach(function(c){
+    var el = document.createElement('div');
+    el.className = 'poster ' + c[2] + (c[5] ? ' now' : '');
+    el.innerHTML =
+      '<span class="num">' + c[0] + '</span>' +
+      '<svg class="i star' + (c[3] ? ' on' : '') + '" viewBox="0 0 24 24" style="fill:' + (c[3] ? 'currentColor' : 'none') + ';"><polygon points="12 2 15 9 22 9 16.5 13.5 18.5 21 12 17 5.5 21 7.5 13.5 2 9 9 9"/></svg>' +
+      '<div class="scrim"><div class="nm">' + c[1] + '</div>' +
+      (c[4] === 'live' ? '<div class="lv"><span class="dot"></span>LIVE</div>' : '<div class="lv" style="color:var(--text-dim2);">' + c[4].toUpperCase() + '</div>') +
+      '</div>';
+    grid.appendChild(el);
+  });
+
+  function showView(viewId){
+    document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+    var v = document.getElementById(viewId);
+    if(v) v.classList.add('active');
+    document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.toggle('active', b.dataset.view===viewId); });
+    var main = document.getElementById('main-area');
+    if(viewId === 'view-player'){ main.classList.add('no-pad'); }
+    else { main.classList.remove('no-pad'); }
+  }
+
+  document.querySelectorAll('.tabs button, [data-jump]').forEach(function(el){
+    el.addEventListener('click', function(){ showView(this.dataset.view || this.dataset.jump); });
+  });
+  document.getElementById('npChip').addEventListener('click', function(){ showView('view-player'); });
+
+  document.querySelectorAll('.chip').forEach(function(c){
+    c.addEventListener('click', function(){
+      this.parentElement.querySelectorAll('.chip').forEach(function(x){ x.classList.remove('active'); });
+      this.classList.add('active');
+    });
+  });
+  document.querySelectorAll('[data-rectab]').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('[data-rectab]').forEach(function(x){ x.classList.remove('active'); });
+      document.querySelectorAll('.rec-tabview').forEach(function(x){ x.classList.remove('active'); });
+      this.classList.add('active');
+      document.getElementById(this.dataset.rectab).classList.add('active');
+    });
+  });
+
+  var moreBtn = document.getElementById('moreBtn'), sheet = document.getElementById('trackSheet'), backdrop = document.getElementById('sheetBackdrop');
+  moreBtn.addEventListener('click', function(e){ e.stopPropagation(); sheet.classList.add('open'); backdrop.classList.add('open'); });
+  backdrop.addEventListener('click', function(){ sheet.classList.remove('open'); backdrop.classList.remove('open'); });
+
+  document.querySelectorAll('.profile-card:not(.add)').forEach(function(p){
+    p.addEventListener('click', function(){
+      document.querySelectorAll('.profile-card').forEach(function(x){ x.classList.remove('sel'); });
+      this.classList.add('sel');
+    });
+  });
+
+  document.getElementById('nav').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-target]');
+    if(!btn) return;
+    document.querySelectorAll('#nav button').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+    document.getElementById(btn.dataset.target).classList.add('active');
+    if(btn.dataset.view) showView(btn.dataset.view);
+  });
+})();
+</script>
+</body>
+</html>

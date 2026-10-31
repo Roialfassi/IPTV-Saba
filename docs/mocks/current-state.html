@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPTV-Saba — Current State (UI Mock)</title>
+<style>
+  /* =====================================================================
+     Faithful static reproduction of the live PyQt5 UI (colors, spacing
+     and copy pulled directly from src/view/*.py). Purpose: a literal
+     "before" reference to compare against docs/mocks/improved-version.html.
+     ===================================================================== */
+  :root{
+    --red:#E50914; --red-hover:#F6121D; --red-press:#b00710;
+    --bg:#0e0e0e; --header-bg:#141414; --border:#222;
+    --list-bg:#1a1a1a; --list-border:#2a2a2a; --item-hover:#252525;
+    --input-bg:#1e1e1e; --input-border:#333;
+    --text:#FFFFFF; --dim:#999; --dim2:#888; --dim3:#777; --dim4:#555;
+    --blue:#1877F2; --blue-hover:#145dbf; --blue-press:#0d4ea2;
+    --combo-bg:#2a2a2a; --combo-border:#444;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:#3a3a3a;font-family:'Segoe UI',Arial,sans-serif;}
+
+  /* ---------- meta / tool chrome (NOT part of the app) ---------- */
+  .tool-strip{
+    position:sticky;top:0;z-index:100;
+    background:#eeece4;color:#2a2a26;
+    display:flex;align-items:center;gap:10px;
+    padding:9px 16px;font-size:12.5px;
+    border-bottom:1px solid #cfccc0;
+    font-family:'Segoe UI',Arial,sans-serif;
+  }
+  .tool-strip b{font-weight:700;}
+  .tool-strip .tag{
+    background:#2a2a26;color:#eeece4;font-size:10px;font-weight:700;
+    letter-spacing:.05em;padding:2px 7px;border-radius:3px;text-transform:uppercase;
+  }
+  .tool-strip .spacer{flex:1;}
+  .tool-strip nav{display:flex;gap:4px;flex-wrap:wrap;}
+  .tool-strip button{
+    background:transparent;border:1px solid #cfccc0;color:#2a2a26;
+    padding:5px 10px;border-radius:5px;font-size:12px;cursor:pointer;
+  }
+  .tool-strip button.active{background:#2a2a26;color:#eeece4;border-color:#2a2a26;}
+  .tool-strip a.swap{
+    color:#2a2a26;font-size:12px;text-decoration:none;border-bottom:1px solid #2a2a26;
+    white-space:nowrap;
+  }
+
+  /* ---------- fake desktop window frame ---------- */
+  .window-wrap{padding:22px;display:flex;justify-content:center;}
+  .window{
+    width:100%;max-width:1360px;background:#000;border-radius:8px;overflow:hidden;
+    box-shadow:0 30px 70px rgba(0,0,0,.55);border:1px solid #000;
+  }
+  .titlebar{
+    height:30px;background:#1b1b1b;display:flex;align-items:center;
+    padding:0 0 0 10px;color:#999;font-size:12px;border-bottom:1px solid #000;
+  }
+  .titlebar .dot{width:8px;height:8px;border-radius:50%;background:#E50914;margin-right:8px;}
+  .titlebar .tb-title{flex:1;}
+  .titlebar .tb-btn{width:44px;height:30px;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;}
+  .titlebar .tb-btn:hover{background:#2a2a2a;}
+  .titlebar .tb-btn.close:hover{background:#E81123;color:#fff;}
+
+  .screen{display:none;background:var(--bg);color:var(--text);}
+  .screen.active{display:block;}
+
+  /* ================= MAIN SCREEN ================= */
+  #screen-main.active{display:flex;flex-direction:column;height:750px;}
+  .app-header{
+    height:44px;background:var(--header-bg);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:12px;padding:0 14px;flex:0 0 auto;
+  }
+  .app-title{font-size:16px;font-weight:800;color:var(--red);}
+  .now-playing{font-size:13px;color:var(--dim);flex:1;}
+  .btn{border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .btn-ghost{background:#333;color:#fff;font-size:12px;padding:5px 14px;}
+  .btn-ghost:hover{background:#444;}
+  .body-split{flex:1;display:flex;min-height:0;}
+  .sidebar{
+    width:280px;flex:0 0 280px;background:var(--header-bg);
+    padding:10px 6px 10px 10px;display:flex;flex-direction:column;gap:6px;
+    border-right:1px solid var(--border);
+  }
+  .eyebrow{font-size:10px;font-weight:700;color:var(--dim4);letter-spacing:1px;}
+  input.qline{
+    background:var(--input-bg);border:1px solid var(--input-border);border-radius:6px;
+    padding:6px 10px;font-size:13px;color:#ddd;width:100%;font-family:inherit;
+  }
+  input.qline:focus{outline:none;border-color:var(--red);}
+  .qlist{
+    background:var(--list-bg);border:1px solid var(--list-border);border-radius:6px;
+    padding:2px;font-size:13px;overflow:auto;
+  }
+  .qlist .item{padding:5px 8px;border-radius:4px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .qlist .item:hover{background:var(--item-hover);}
+  .qlist .item.sel{background:var(--red);}
+  #group-list{height:220px;}
+  .hr{border:none;border-top:1px solid var(--border);margin:2px 0;}
+  .tabbar{display:flex;}
+  .tab{
+    flex:1;text-align:center;background:var(--list-bg);color:var(--dim2);
+    padding:5px 8px;font-size:12px;font-weight:600;cursor:pointer;
+  }
+  .tab.sel{color:var(--red);border-bottom:2px solid var(--red);}
+  #channel-list{flex:1;min-height:0;}
+  .right-pane{flex:1;display:flex;flex-direction:column;gap:6px;padding:8px 10px 8px 6px;min-width:0;}
+  .video-frame{
+    flex:1;background:#000;border-radius:8px;min-height:240px;
+    display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;
+  }
+  .video-frame .noise{
+    position:absolute;inset:0;opacity:.5;
+    background-image:repeating-linear-gradient(0deg,#151515 0 2px,#0a0a0a 2px 4px);
+  }
+  .video-frame .ph{position:relative;text-align:center;color:#555;}
+  .video-frame .ph .tri{width:0;height:0;border-top:16px solid transparent;border-bottom:16px solid transparent;border-left:26px solid #444;margin:0 auto 10px;}
+  .transport{height:36px;display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+  .icon-btn{
+    background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;
+    padding:4px 10px;min-width:40px;min-height:26px;cursor:pointer;font-family:inherit;
+  }
+  .icon-btn:hover{background:var(--red-hover);}
+  .icon-btn.gray{background:#333;} .icon-btn.gray:hover{background:#444;}
+  .icon-btn.blue{background:var(--blue);} .icon-btn.blue:hover{background:var(--blue-hover);}
+  .vol-lbl{font-size:11px;color:#888;width:24px;}
+  input[type=range]{-webkit-appearance:none;height:4px;background:#444;border-radius:2px;width:100px;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--red);margin-top:-4px;}
+  .grow{flex:1;}
+  .trackbar{height:30px;display:flex;align-items:center;gap:8px;flex:0 0 auto;}
+  .trackbar label{font-size:11px;color:#777;}
+  select.qcombo{
+    background:var(--combo-bg);color:#ddd;border:1px solid var(--combo-border);border-radius:4px;
+    padding:3px 6px;font-size:11px;font-family:inherit;
+  }
+  .downloads-panel{flex:0 0 auto;}
+  .dl-toggle{
+    width:100%;text-align:left;background:var(--list-bg);color:var(--dim2);border:none;
+    border-top:1px solid #333;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;
+  }
+  .dl-toggle:hover{background:#222;color:#ccc;}
+  .dl-content{background:var(--list-bg);padding:8px;display:flex;flex-direction:column;gap:6px;}
+  .dl-section-title{font-size:10px;font-weight:700;color:#666;text-transform:uppercase;padding-left:4px;}
+  .dl-item{background:#222;border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;gap:4px;}
+  .dl-row1{display:flex;align-items:center;gap:6px;}
+  .dl-name{color:#fff;font-size:12px;font-weight:600;flex:1;}
+  .dl-btn{background:#444;color:#ccc;border:none;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;width:55px;cursor:pointer;}
+  .dl-btn:hover{background:#555;color:#fff;}
+  .dl-btn.stop{background:#8B0000;color:#fff;}
+  .dl-progress{height:10px;border:1px solid #444;border-radius:4px;background:#333;overflow:hidden;}
+  .dl-progress > div{height:100%;background:var(--red);}
+  .dl-status{color:#888;font-size:11px;}
+  .dl-rec-row{display:flex;align-items:center;gap:8px;}
+  .rec-tag{color:var(--red);font-size:10px;font-weight:700;width:28px;}
+  .rec-elapsed{color:var(--red);font-size:12px;font-weight:600;}
+
+  /* ================= LOGIN SCREEN ================= */
+  #screen-login.active{
+    display:flex;height:750px;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,#141414 0%, #000 100%);
+  }
+  .login-card{
+    width:500px;min-height:600px;background:rgba(20,20,20,.95);border-radius:15px;
+    box-shadow:0 0 45px rgba(0,0,0,.6);padding:40px;display:flex;flex-direction:column;gap:20px;
+  }
+  .login-header{color:var(--red);font-size:28px;font-weight:800;text-align:center;letter-spacing:1px;font-family:Calibri,'Segoe UI',sans-serif;}
+  .profile-scroll{flex:1;overflow:auto;padding-right:2px;}
+  .profile-item{
+    background:rgba(50,50,50,.7);border-radius:10px;padding:15px;margin-bottom:10px;color:#fff;
+    font-size:14px;cursor:pointer;
+  }
+  .profile-item:hover{background:rgba(100,100,100,.5);}
+  .profile-item.sel{background:var(--red);}
+  .remember-row{display:flex;align-items:center;gap:8px;font-size:14px;color:#fff;}
+  .fake-checkbox{width:20px;height:20px;border:2px solid var(--red);border-radius:4px;}
+  .login-buttons{display:flex;gap:15px;}
+  .login-buttons button{flex:1;border:none;border-radius:6px;padding:10px 15px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;font-family:inherit;}
+  .btn-login{background:#e50914;} .btn-login:hover{background:#ff0909;}
+  .btn-easy{background:#ff5733;} .btn-easy:hover{background:#ff3a11;}
+  .btn-create{background:#1877f2;} .btn-create:hover{background:#145dbf;}
+
+  /* ================= EASY MODE ================= */
+  #screen-easy.active{display:flex;flex-direction:column;height:750px;background:#141414;position:relative;}
+  .easy-video{flex:1;background:#000;position:relative;}
+  .easy-controls{padding:18px 24px 24px;display:flex;flex-direction:column;gap:14px;background:linear-gradient(0deg,rgba(0,0,0,.55),transparent);}
+  .easy-channel-label{text-align:center;font-size:24px;font-weight:700;}
+  .easy-row{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;}
+  .easy-btn{
+    border:none;border-radius:6px;color:#fff;padding:14px 24px;font-size:20px;font-weight:700;
+    min-width:150px;cursor:pointer;font-family:inherit;
+  }
+  .easy-btn.red{background:rgba(229,9,20,.8);} .easy-btn.red:hover{background:rgba(229,9,20,1);}
+  .easy-btn.gray{background:#444;border:1px solid #666;} .easy-btn.gray:hover{background:#555;}
+  .easy-btn.blue{background:#2c5282;border:1px solid #3b6aa0;} .easy-btn.blue:hover{background:#3b6aa0;}
+  .easy-vol-row{display:flex;justify-content:center;align-items:center;gap:10px;}
+  .easy-vol-btn{width:70px;height:50px;background:#444;border:1px solid #666;color:#fff;font-size:16px;font-weight:700;border-radius:6px;cursor:pointer;}
+  .easy-vol-btn:hover{background:#555;}
+  .easy-vol-label{width:80px;text-align:center;font-size:20px;font-weight:700;}
+  .easy-vol-slider{width:200px;}
+
+  /* ================= FULLSCREEN PLAYER ================= */
+  #screen-full.active{display:flex;flex-direction:column;height:750px;background:#000;position:relative;justify-content:flex-end;}
+  .full-overlay{
+    background:linear-gradient(180deg,rgba(0,0,0,0) 0%, rgba(0,0,0,.4) 30%, rgba(0,0,0,.86) 100%);
+    padding:20px 12px 10px;display:flex;flex-direction:column;gap:6px;
+  }
+  .full-row1{display:flex;align-items:center;gap:8px;}
+  .pill-btn{background:rgba(229,9,20,.85);border:none;color:#fff;padding:6px 14px;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit;}
+  .pill-btn:hover{background:rgba(229,9,20,1);}
+  .full-row1 .fill{flex:1;}
+  .full-row1 .chan{font-size:14px;font-weight:700;}
+  .full-row2{display:flex;align-items:center;gap:8px;}
+  .full-row2 label{font-size:12px;color:#aaa;}
+  select.qcombo-dark{background:#2a2a2a;color:#ddd;border:1px solid #555;border-radius:4px;padding:3px 6px;font-size:11px;font-family:inherit;}
+  .row2-btn{background:rgba(44,44,44,.8);border:1px solid #555;color:#fff;padding:5px 10px;font-size:12px;border-radius:6px;cursor:pointer;font-family:inherit;}
+  .row2-btn:hover{background:rgba(229,9,20,.8);border-color:var(--red);}
+</style>
+</head>
+<body>
+
+  <div class="tool-strip">
+    <b>IPTV-Saba UI Mocks</b><span class="tag">Current State</span>
+    <nav id="nav">
+      <button data-target="screen-main" class="active">Main Screen</button>
+      <button data-target="screen-login">Login / Profiles</button>
+      <button data-target="screen-easy">Easy Mode</button>
+      <button data-target="screen-full">Fullscreen Player</button>
+    </nav>
+    <div class="spacer"></div>
+    <a class="swap" href="improved-version.html">Concept A · Tuner →</a>
+    <a class="swap" href="improved-version-b.html">Concept B · Marquee →</a>
+  </div>
+
+  <div class="window-wrap">
+    <div class="window">
+      <div class="titlebar">
+        <span class="dot"></span><span class="tb-title">IPTV Saba</span>
+        <span class="tb-btn">–</span><span class="tb-btn">□</span><span class="tb-btn close">×</span>
+      </div>
+
+      <!-- ============== MAIN SCREEN ============== -->
+      <div class="screen active" id="screen-main">
+        <div class="app-header">
+          <div class="app-title">IPTV Saba</div>
+          <div class="now-playing">Now Playing: PULSE SPORTS HD</div>
+          <button class="btn btn-ghost">Refresh</button>
+          <button class="btn btn-ghost">Logout</button>
+        </div>
+        <div class="body-split">
+          <div class="sidebar">
+            <div class="eyebrow">GROUPS</div>
+            <input class="qline" placeholder="Search groups...">
+            <div class="qlist" id="group-list">
+              <div class="item sel">SPORTS  (214)</div>
+              <div class="item">NEWS  (98)</div>
+              <div class="item">MOVIES  (156)</div>
+              <div class="item">KIDS  (42)</div>
+              <div class="item">DOCUMENTARY  (67)</div>
+              <div class="item">MUSIC  (35)</div>
+              <div class="item">ENTERTAINMENT  (88)</div>
+              <div class="item">LOCAL  (21)</div>
+              <div class="item">INTERNATIONAL  (129)</div>
+              <div class="item">LIFESTYLE  (19)</div>
+            </div>
+            <div class="hr"></div>
+            <div class="tabbar">
+              <div class="tab sel">All</div>
+              <div class="tab">Favorites</div>
+              <div class="tab">History</div>
+            </div>
+            <input class="qline" placeholder="Search channels...">
+            <div class="qlist" id="channel-list">
+              <div class="item sel">[F] PULSE SPORTS HD  [LIVE]</div>
+              <div class="item">PULSE SPORTS 2  [LIVE]</div>
+              <div class="item">[F] ARENA LIVE  [LIVE]</div>
+              <div class="item">ARENA LIVE 2  [LIVE]</div>
+              <div class="item">GOAL NETWORK  [LIVE]</div>
+              <div class="item">GOAL NETWORK EXTRA  [LIVE]</div>
+              <div class="item">COURT SIDE  [LIVE]</div>
+              <div class="item">TRACKSIDE  [LIVE]</div>
+              <div class="item">RING CENTER  [LIVE]</div>
+              <div class="item">MATCHDAY ONE  [LIVE]</div>
+              <div class="item">MATCHDAY TWO  [LIVE]</div>
+              <div class="item">FULL THROTTLE  [LIVE]</div>
+              <div class="item">BASELINE SPORTS  [LIVE]</div>
+              <div class="item">SUMMIT OUTDOORS  [LIVE]</div>
+            </div>
+          </div>
+          <div class="right-pane">
+            <div class="video-frame">
+              <div class="noise"></div>
+              <div class="ph"><div class="tri"></div>PULSE SPORTS HD</div>
+            </div>
+            <div class="transport">
+              <button class="icon-btn">Play</button>
+              <button class="icon-btn">Pause</button>
+              <button class="icon-btn">Stop</button>
+              <button class="icon-btn gray">Full</button>
+              <span class="vol-lbl">Vol</span>
+              <input type="range" value="50">
+              <div class="grow"></div>
+              <button class="icon-btn blue">Rec</button>
+            </div>
+            <div class="trackbar">
+              <label>Audio:</label>
+              <select class="qcombo"><option>Track 1 (eng)</option></select>
+              <label>Subs:</label>
+              <select class="qcombo"><option>None</option></select>
+              <label>Quality:</label>
+              <select class="qcombo"><option>Auto</option></select>
+              <button class="icon-btn gray" style="font-size:10px;min-width:36px;min-height:22px;padding:3px 8px;">SRT</button>
+            </div>
+            <div class="downloads-panel">
+              <button class="dl-toggle">v  Downloads &amp; Recordings</button>
+              <div class="dl-content">
+                <div class="dl-section-title">Active Downloads</div>
+                <div class="dl-item">
+                  <div class="dl-row1"><span class="dl-name">STARLIGHT MOVIES — Friday Feature</span><button class="dl-btn">Pause</button><button class="dl-btn">Cancel</button></div>
+                  <div class="dl-progress"><div style="width:63%"></div></div>
+                  <div class="dl-status">742.1 MB / 1.18 GB | 4.2 MB/s | ETA 1m 44s</div>
+                </div>
+                <div class="dl-section-title">Active Recordings</div>
+                <div class="dl-item">
+                  <div class="dl-rec-row"><span class="rec-tag">REC</span><span class="dl-name">NORTHWIND NEWS</span><span class="rec-elapsed">00:14:22</span><button class="dl-btn stop">Stop</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== LOGIN SCREEN ============== -->
+      <div class="screen" id="screen-login">
+        <div class="login-card">
+          <div class="login-header">Select Your Profile</div>
+          <div class="profile-scroll">
+            <div class="profile-item sel">Living Room</div>
+            <div class="profile-item">Roi</div>
+            <div class="profile-item">Kids</div>
+            <div class="profile-item">Guest</div>
+          </div>
+          <div class="remember-row"><div class="fake-checkbox"></div> Remember this profile</div>
+          <div class="login-buttons">
+            <button class="btn-login">Login</button>
+            <button class="btn-easy">Easy Mode</button>
+            <button class="btn-create">Create Profile</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== EASY MODE ============== -->
+      <div class="screen" id="screen-easy">
+        <div class="easy-video"></div>
+        <div class="easy-controls">
+          <div class="easy-channel-label">PULSE SPORTS HD  (Channel 1 / 6)</div>
+          <div class="easy-row">
+            <button class="easy-btn red">◀  Previous</button>
+            <button class="easy-btn red">Next  ▶</button>
+            <button class="easy-btn gray">Exit Easy Mode</button>
+            <button class="easy-btn blue">Fullscreen</button>
+          </div>
+          <div class="easy-vol-row">
+            <button class="easy-vol-btn">Vol -</button>
+            <div class="easy-vol-label">50%</div>
+            <button class="easy-vol-btn">Vol +</button>
+            <input type="range" class="easy-vol-slider" value="50">
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== FULLSCREEN PLAYER ============== -->
+      <div class="screen" id="screen-full">
+        <div class="full-overlay">
+          <div class="full-row1">
+            <button class="pill-btn">Back</button>
+            <button class="pill-btn">Pause</button>
+            <span style="font-size:12px;">Vol</span>
+            <input type="range" value="50" style="width:120px;">
+            <span style="font-size:12px;width:40px;">50%</span>
+            <div class="fill"></div>
+            <div class="chan">PULSE SPORTS HD</div>
+          </div>
+          <div class="full-row2">
+            <label>Audio:</label>
+            <select class="qcombo-dark"><option>Track 1 (eng)</option></select>
+            <label>Subs:</label>
+            <select class="qcombo-dark"><option>None</option></select>
+            <button class="row2-btn">Load SRT</button>
+            <label>Quality:</label>
+            <select class="qcombo-dark"><option>Auto</option></select>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+  document.getElementById('nav').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-target]');
+    if(!btn) return;
+    document.querySelectorAll('#nav button').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+    document.getElementById(btn.dataset.target).classList.add('active');
+  });
+</script>
+</body>
+</html>

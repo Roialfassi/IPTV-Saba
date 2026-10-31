@@ -119,10 +119,21 @@ class IPTVApp:
     def open_easy_mode_screen(self):
         try:
             self.easy_mode_screen = EasyModeScreen(self.controller.active_profile)
+            self.easy_mode_screen.exit_easy_mode_signal.connect(self.on_easy_mode_exit)
             self.easy_mode_screen.show()
             self.login_screen.hide()
         except Exception as e:
             logger.error(f"Error opening easy mode screen: {e}")
+
+    def on_easy_mode_exit(self):
+        """
+        Return to the login screen when Easy Mode is exited.
+
+        The Easy Mode window closes itself after emitting the signal; without
+        another visible window Qt would quit the whole application.
+        """
+        self.easy_mode_screen = None
+        self.transition_to_login_screen()
 
     def logout_choose_channel_screen(self):
         self.controller.config_manager.set_value("auto_login_enabled", False)

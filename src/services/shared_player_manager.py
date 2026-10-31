@@ -78,7 +78,16 @@ class SharedPlayerManager(QObject):
 
     # Quality selection signals
     quality_variants_available = pyqtSignal(list)  # List of QualityVariant objects
-    
+
+    # Internal signals that marshal libVLC callbacks (fired on VLC's own
+    # threads) onto the Qt main thread. QTimers may only be created/started
+    # on a Qt thread, so the VLC callbacks do nothing but emit these.
+    _media_playing = pyqtSignal()
+    _media_stopped = pyqtSignal()
+    _media_end_reached = pyqtSignal()
+    _media_error = pyqtSignal()
+    _media_opening = pyqtSignal()
+
     # Connection timeout in seconds
     CONNECTION_TIMEOUT = 15
 
@@ -216,33 +225,39 @@ class SharedPlayerManager(QObject):
     def _setup_vlc_events(self):
         """
         Setup VLC event callbacks for error handling and state monitoring.
-        
-        These callbacks help detect:
-        - Stream errors (network issues, invalid streams)
-        - Buffering status
-        - Playback state changes
+
+        libVLC invokes callbacks on its own internal threads, where creating
+        QTimers (connection timeout, retry backoff) is unsafe. The callbacks
+        therefore only emit the _media_* signals; the queued connections
+        below deliver them to the handler slots on the Qt main thread.
+        _on_paused and _on_buffering stay direct VLC callbacks because they
+        do no timer work (logging and signal emission are thread-safe).
         """
         event_manager = self._player.event_manager()
-        
-        # Playback events
-        event_manager.event_attach(vlc.EventType.MediaPlayerPlaying, self._on_playing)
+
+        self._media_playing.connect(self._on_playing)
+        self._media_stopped.connect(self._on_stopped)
+        self._media_end_reached.connect(self._on_end_reached)
+        self._media_error.connect(self._on_error)
+        self._media_opening.connect(self._on_opening)
+
+        event_manager.event_attach(vlc.EventType.MediaPlayerPlaying,
+                                   lambda event: self._media_playing.emit())
         event_manager.event_attach(vlc.EventType.MediaPlayerPaused, self._on_paused)
-        event_manager.event_attach(vlc.EventType.MediaPlayerStopped, self._on_stopped)
-        event_manager.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_end_reached)
-        
-        # Error events
-        event_manager.event_attach(vlc.EventType.MediaPlayerEncounteredError, self._on_error)
-        
-        # Buffering events
+        event_manager.event_attach(vlc.EventType.MediaPlayerStopped,
+                                   lambda event: self._media_stopped.emit())
+        event_manager.event_attach(vlc.EventType.MediaPlayerEndReached,
+                                   lambda event: self._media_end_reached.emit())
+        event_manager.event_attach(vlc.EventType.MediaPlayerEncounteredError,
+                                   lambda event: self._media_error.emit())
         event_manager.event_attach(vlc.EventType.MediaPlayerBuffering, self._on_buffering)
-        
-        # Opening event (for connection tracking)
-        event_manager.event_attach(vlc.EventType.MediaPlayerOpening, self._on_opening)
-        
+        event_manager.event_attach(vlc.EventType.MediaPlayerOpening,
+                                   lambda event: self._media_opening.emit())
+
         logger.info("VLC event callbacks registered")
     
-    def _on_playing(self, event):
-        """Called when playback starts."""
+    def _on_playing(self):
+        """Playback started (delivered on the main thread via _media_playing)."""
         logger.info("VLC Event: Playing")
         self._is_connecting = False
         self._cancel_connection_timer()
@@ -265,20 +280,20 @@ class SharedPlayerManager(QObject):
         """Called when playback is paused."""
         logger.debug("VLC Event: Paused")
     
-    def _on_stopped(self, event):
-        """Called when playback is stopped."""
+    def _on_stopped(self):
+        """Playback stopped (delivered on the main thread via _media_stopped)."""
         logger.debug("VLC Event: Stopped")
         self._is_connecting = False
         self._cancel_connection_timer()
     
-    def _on_end_reached(self, event):
-        """Called when stream ends."""
+    def _on_end_reached(self):
+        """Stream ended (delivered on the main thread via _media_end_reached)."""
         logger.info("VLC Event: End reached")
         self._is_connecting = False
         self._cancel_connection_timer()
     
-    def _on_error(self, event):
-        """Called when VLC encounters an error."""
+    def _on_error(self):
+        """VLC error (delivered on the main thread via _media_error)."""
         logger.error("VLC Event: Error encountered")
         self._is_connecting = False
         self._cancel_connection_timer()
@@ -300,7 +315,7 @@ class SharedPlayerManager(QObject):
             self.stream_error.emit(error_msg)
     
     def _on_buffering(self, event):
-        """Called during buffering with percentage."""
+        """Direct VLC callback (runs on a VLC thread; only emits a signal)."""
         # event.u.new_cache is the buffering percentage (0-100)
         try:
             percentage = int(event.u.new_cache)
@@ -310,8 +325,8 @@ class SharedPlayerManager(QObject):
         except Exception:
             pass
     
-    def _on_opening(self, event):
-        """Called when VLC starts opening a stream."""
+    def _on_opening(self):
+        """Stream opening (delivered on the main thread via _media_opening)."""
         logger.info("VLC Event: Opening stream")
         self._is_connecting = True
         self._start_connection_timer()

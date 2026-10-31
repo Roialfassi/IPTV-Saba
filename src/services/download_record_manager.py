@@ -200,8 +200,13 @@ class DownloadRecordManager(QObject):
         safe_name = "".join(c for c in channel_name if c.isalnum() or c in (' ', '-', '_')).strip()
         safe_name = safe_name.replace(' ', '_')
 
-        extension = '.mp4'  # default
-        if not is_recording:
+        if is_recording:
+            # Recordings dump the raw stream (usually MPEG-TS) without
+            # remuxing, so .ts is the honest container name — a .mp4 name
+            # would be rejected by stricter players.
+            extension = '.ts'
+        else:
+            extension = '.mp4'  # default
             try:
                 parsed = urlparse(url)
                 _, ext = os.path.splitext(parsed.path)
@@ -543,7 +548,8 @@ class DownloadRecordManager(QObject):
             vlc_instance = vlc.Instance('--sout-file-overwrite')
             player = vlc_instance.media_player_new()
 
-            sout_options = f":sout=#duplicate{{dst=file{{dst={filepath}}}}}"
+            # Quote the path — sout option parsing breaks on unquoted spaces.
+            sout_options = f":sout=#duplicate{{dst=file{{dst='{filepath}'}}}}"
             media = vlc_instance.media_new(url, sout_options)
             player.set_media(media)
             player.play()

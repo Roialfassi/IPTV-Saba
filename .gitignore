@@ -2,23 +2,21 @@
 /.idea
 /src/Tests
 *.pyc
-<<<<<<< Updated upstream
+__pycache__/
 iptv_app.spec
+/iptv_app.dist
 /build
 /dist
+/downloads
 /IPTV-Saba
-/src/IPTV-Saba
-=======
-/iptv_app.dist
->>>>>>> Stashed changes
 /src/IPTV-Saba
 /src/view/IPTV-Saba
 /src/build
-*.mkv
 /src/dist
+src/iptv_app.exe
+*.mkv
 *.mp4
-src/iptv_app.exe
-src/iptv_app.exe
+*.ts
 /backend
 /frontend
 .claude/settings.local.json
